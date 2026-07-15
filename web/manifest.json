@@ -1,0 +1,35 @@
+{
+    "name": "SafePin",
+    "short_name": "SafePin",
+    "start_url": ".",
+    "display": "standalone",
+    "background_color": "#E64A2E",
+    "theme_color": "#E64A2E",
+    "description": "在宅避難の見えない孤立を、地図でつなぐピン立てマップ",
+    "orientation": "portrait-primary",
+    "prefer_related_applications": false,
+    "icons": [
+        {
+            "src": "icons/Icon-192.png",
+            "sizes": "192x192",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-512.png",
+            "sizes": "512x512",
+            "type": "image/png"
+        },
+        {
+            "src": "icons/Icon-maskable-192.png",
+            "sizes": "192x192",
+            "type": "image/png",
+            "purpose": "maskable"
+        },
+        {
+            "src": "icons/Icon-maskable-512.png",
+            "sizes": "512x512",
+            "type": "image/png",
+            "purpose": "maskable"
+        }
+    ]
+}
