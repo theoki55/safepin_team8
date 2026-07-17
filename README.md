@@ -1,16 +1,7 @@
-# safepin
+# SafePin Team8 - プロトタイプ - 
 
-A new Flutter project.
+●在宅避難の見えない孤立を、地図でつなぐ「ピン立てマップ」プロジェクト●
 
-## Getting Started
+首都直下地震等の大災害発生後3〜7日、在宅避難者の備蓄が減少し、物資や情報、生活上の個別ニーズが顕在化する一方、その所在や困りごとが地域から見えない「見えない孤立」の解消を目指しているものです。
 
-This project is a starting point for a Flutter application.
-
-A few resources to get you started if this is your first Flutter project:
-
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
-
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+「住民自身がNEED（必要な支援）・OFFER（提供できる支援）・INFO（地域情報）を地図上で共有」し、地域のニーズと資源を可視化。住民・自治会・支援者・行政をつなぎ、迅速な支援調整を実現する共助型Webプラットフォームを構築します。
