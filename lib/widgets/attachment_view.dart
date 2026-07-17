@@ -5,10 +5,88 @@ import 'package:flutter/material.dart';
 import '../models/attachment.dart';
 import '../services/attachment_service.dart';
 
-/// 添付画像のバイト列を取得(dataUrl / url の両対応)。
+/// 添付画像の base64 バイト列を取得(ローカル版)。
 Uint8List? _imageBytes(Attachment a) {
   final bytes = AttachmentBytes.decode(a);
   return bytes == null ? null : Uint8List.fromList(bytes);
+}
+
+/// 添付画像を表示するウィジェット。
+///
+/// - Firebase 版: [Attachment.url] を [Image.network] で表示
+/// - ローカル版: base64 [Attachment.dataUrl] を [Image.memory] で表示
+///
+/// どちらのソースも無い場合は [placeholder] を返す。
+class AttachmentImage extends StatelessWidget {
+  final Attachment attachment;
+  final double? width;
+  final double? height;
+  final BoxFit fit;
+  final Widget Function()? placeholderBuilder;
+
+  const AttachmentImage({
+    super.key,
+    required this.attachment,
+    this.width,
+    this.height,
+    this.fit = BoxFit.cover,
+    this.placeholderBuilder,
+  });
+
+  /// 画像として表示可能なソースを持っているか。
+  static bool canDisplay(Attachment a) {
+    if (!a.isImage) return false;
+    if (a.dataUrl != null && AttachmentBytes.decode(a) != null) return true;
+    if (a.url != null && a.url!.isNotEmpty) return true;
+    return false;
+  }
+
+  Widget _defaultPlaceholder() =>
+      placeholderBuilder?.call() ??
+      Container(
+        width: width,
+        height: height,
+        color: Colors.black12,
+        child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
+      );
+
+  Widget _loading() => Container(
+        width: width,
+        height: height,
+        color: Colors.black12,
+        alignment: Alignment.center,
+        child: const SizedBox(
+          width: 20,
+          height: 20,
+          child: CircularProgressIndicator(strokeWidth: 2),
+        ),
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    // 1) ローカル base64 を優先
+    final bytes = _imageBytes(attachment);
+    if (bytes != null) {
+      return Image.memory(bytes, width: width, height: height, fit: fit);
+    }
+    // 2) Firebase のダウンロードURL
+    final url = attachment.url;
+    if (url != null && url.isNotEmpty) {
+      return Image.network(
+        url,
+        width: width,
+        height: height,
+        fit: fit,
+        loadingBuilder: (context, child, progress) {
+          if (progress == null) return child;
+          return _loading();
+        },
+        errorBuilder: (context, error, stack) => _defaultPlaceholder(),
+      );
+    }
+    // 3) どちらも無い
+    return _defaultPlaceholder();
+  }
 }
 
 /// 添付一覧を表示するグリッド(閲覧用)。
@@ -30,21 +108,18 @@ class AttachmentGallery extends StatelessWidget {
             spacing: 8,
             runSpacing: 8,
             children: images.map((a) {
-              final bytes = _imageBytes(a);
+              final displayable = AttachmentImage.canDisplay(a);
               return GestureDetector(
-                onTap: bytes == null
-                    ? null
-                    : () => _showImageDialog(context, bytes, a.name),
+                onTap: displayable ? () => _showImageDialog(context, a) : null,
                 child: ClipRRect(
                   borderRadius: BorderRadius.circular(10),
-                  child: bytes == null
-                      ? _placeholder()
-                      : Image.memory(
-                          bytes,
-                          width: 96,
-                          height: 96,
-                          fit: BoxFit.cover,
-                        ),
+                  child: AttachmentImage(
+                    attachment: a,
+                    width: 96,
+                    height: 96,
+                    fit: BoxFit.cover,
+                    placeholderBuilder: _placeholder,
+                  ),
                 ),
               );
             }).toList(),
@@ -67,7 +142,7 @@ class AttachmentGallery extends StatelessWidget {
         child: const Icon(Icons.broken_image_outlined, color: Colors.black38),
       );
 
-  void _showImageDialog(BuildContext context, Uint8List bytes, String name) {
+  void _showImageDialog(BuildContext context, Attachment a) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
@@ -77,7 +152,9 @@ class AttachmentGallery extends StatelessWidget {
           children: [
             InteractiveViewer(
               maxScale: 5,
-              child: Center(child: Image.memory(bytes)),
+              child: Center(
+                child: AttachmentImage(attachment: a, fit: BoxFit.contain),
+              ),
             ),
             Positioned(
               top: 8,
@@ -94,7 +171,7 @@ class AttachmentGallery extends StatelessWidget {
               left: 12,
               bottom: 12,
               child: Text(
-                name,
+                a.name,
                 style: const TextStyle(color: Colors.white70, fontSize: 12),
               ),
             ),
@@ -233,10 +310,13 @@ class EditableAttachmentGrid extends StatelessWidget {
   }
 
   Widget _thumb(Attachment a) {
-    final bytes = _imageBytes(a);
-    if (bytes == null) {
-      return Container(width: 84, height: 84, color: Colors.black12);
-    }
-    return Image.memory(bytes, width: 84, height: 84, fit: BoxFit.cover);
+    return AttachmentImage(
+      attachment: a,
+      width: 84,
+      height: 84,
+      fit: BoxFit.cover,
+      placeholderBuilder: () =>
+          Container(width: 84, height: 84, color: Colors.black12),
+    );
   }
 }
