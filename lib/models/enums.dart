@@ -63,13 +63,41 @@ enum PinType {
 
   static PinType fromName(String name) =>
       PinType.values.firstWhere((e) => e.name == name, orElse: () => PinType.info);
+
+  /// 種別ごとに選択できる対応ステータスの一覧(順序どおり)。
+  /// - NEED/OFFER: 未確認→現地確認済→支援調整中→対応中→対応済
+  /// - INFO:       未確認→現地確認済
+  List<PinStatus> get availableStatuses {
+    switch (this) {
+      case PinType.need:
+      case PinType.offer:
+        return const [
+          PinStatus.unconfirmed,
+          PinStatus.confirmed,
+          PinStatus.coordinating,
+          PinStatus.inProgress,
+          PinStatus.resolved,
+        ];
+      case PinType.info:
+        return const [
+          PinStatus.unconfirmed,
+          PinStatus.confirmed,
+        ];
+    }
+  }
+
+  /// 指定ステータスがこの種別で有効か。
+  bool supportsStatus(PinStatus status) => availableStatuses.contains(status);
 }
 
-/// 対応ステータス: 未確認→現地確認済→支援調整中→対応済
+/// 対応ステータス:
+/// NEED/OFFER: 未確認→現地確認済→支援調整中→対応中→対応済
+/// INFO:       未確認→現地確認済
 enum PinStatus {
   unconfirmed,
   confirmed,
   coordinating,
+  inProgress,
   resolved;
 
   String get label {
@@ -80,6 +108,8 @@ enum PinStatus {
         return '現地確認済';
       case PinStatus.coordinating:
         return '支援調整中';
+      case PinStatus.inProgress:
+        return '対応中';
       case PinStatus.resolved:
         return '対応済';
     }
@@ -93,6 +123,8 @@ enum PinStatus {
         return const Color(0xFFFB8C00); // オレンジ
       case PinStatus.coordinating:
         return const Color(0xFF3949AB); // インディゴ
+      case PinStatus.inProgress:
+        return const Color(0xFF00897B); // ティール
       case PinStatus.resolved:
         return const Color(0xFF2E7D32); // 濃い緑
     }
@@ -106,11 +138,15 @@ enum PinStatus {
         return Icons.visibility_rounded;
       case PinStatus.coordinating:
         return Icons.handshake_rounded;
+      case PinStatus.inProgress:
+        return Icons.autorenew_rounded;
       case PinStatus.resolved:
         return Icons.check_circle_rounded;
     }
   }
 
+  /// 全体の中での順序(0始まり)。ステッパー内の相対位置は
+  /// [PinType.availableStatuses] のインデックスで算出する。
   int get step {
     switch (this) {
       case PinStatus.unconfirmed:
@@ -119,8 +155,10 @@ enum PinStatus {
         return 1;
       case PinStatus.coordinating:
         return 2;
-      case PinStatus.resolved:
+      case PinStatus.inProgress:
         return 3;
+      case PinStatus.resolved:
+        return 4;
     }
   }
 

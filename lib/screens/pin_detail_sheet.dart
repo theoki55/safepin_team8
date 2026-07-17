@@ -211,6 +211,7 @@ class _DetailBody extends StatelessWidget {
 }
 
 /// ステータスを進める/戻すステッパー。
+/// 種別([PinType.availableStatuses])に応じて選べるステータスが変わる。
 class _StatusStepper extends StatelessWidget {
   final Pin pin;
   const _StatusStepper({required this.pin});
@@ -218,49 +219,52 @@ class _StatusStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
+    // 種別ごとの選択可能なステータス一覧(順序どおり)
+    final statuses = pin.type.availableStatuses;
+    // 現在ステータスの、この一覧内での位置(見つからなければ0)
+    final currentIndex =
+        statuses.indexOf(pin.status).clamp(0, statuses.length - 1);
+
     return Column(
       children: [
         Row(
-          children: PinStatus.values.map((s) {
-            final active = s.step <= pin.status.step;
-            final isLast = s == PinStatus.values.last;
+          children: List.generate(statuses.length, (i) {
+            final s = statuses[i];
+            final active = i <= currentIndex;
+            final isLast = i == statuses.length - 1;
             return Expanded(
               child: Row(
                 children: [
-                  Column(
-                    children: [
-                      Container(
-                        width: 30,
-                        height: 30,
-                        decoration: BoxDecoration(
-                          color: active ? s.color : Colors.black12,
-                          shape: BoxShape.circle,
-                        ),
-                        child: Icon(s.icon,
-                            size: 16,
-                            color: active ? Colors.white : Colors.black38),
-                      ),
-                    ],
+                  Container(
+                    width: 30,
+                    height: 30,
+                    decoration: BoxDecoration(
+                      color: active ? s.color : Colors.black12,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(s.icon,
+                        size: 16,
+                        color: active ? Colors.white : Colors.black38),
                   ),
                   if (!isLast)
                     Expanded(
                       child: Container(
                         height: 3,
-                        color: s.step < pin.status.step
-                            ? PinStatus.values[s.step + 1].color
+                        color: i < currentIndex
+                            ? statuses[i + 1].color
                             : Colors.black12,
                       ),
                     ),
                 ],
               ),
             );
-          }).toList(),
+          }),
         ),
         const SizedBox(height: 12),
         Wrap(
           spacing: 8,
           runSpacing: 8,
-          children: PinStatus.values.map((s) {
+          children: statuses.map((s) {
             final selected = s == pin.status;
             return ChoiceChip(
               label: Text(s.label),

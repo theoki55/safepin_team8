@@ -1,0 +1,7 @@
+type,title,comment,lat,lng,priority,status,mode,authorName
+need,飲料水が不足しています,高齢者世帯で飲み水が足りません,35.6812,139.7671,high,unconfirmed,disaster,匿名
+need,毛布が必要です,避難所で毛布が不足,35.6895,139.6917,medium,confirmed,disaster,避難所A
+offer,発電機を貸せます,ガソリン式1台あります,35.6702,139.7620,medium,coordinating,disaster,山田電機
+offer,炊き出しできます,豚汁100食分,35.6650,139.7310,low,inProgress,disaster,町内会
+info,給水所を開設中,10時〜16時,35.6850,139.7100,low,confirmed,disaster,市役所
+info,通行止め情報,〇〇橋が通行止め,35.6600,139.7000,medium,unconfirmed,disaster,住民

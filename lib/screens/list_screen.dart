@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../models/enums.dart';
 import '../providers/app_state.dart';
 import '../widgets/pin_card.dart';
 import 'filter_sheet.dart';
@@ -87,7 +88,7 @@ class _ListScreenState extends State<ListScreen> {
             ),
             Expanded(
               child: pins.isEmpty
-                  ? _empty()
+                  ? _empty(context, state)
                   : ListView.builder(
                       padding: const EdgeInsets.only(bottom: 90, top: 4),
                       itemCount: pins.length,
@@ -106,19 +107,40 @@ class _ListScreenState extends State<ListScreen> {
     );
   }
 
-  Widget _empty() {
+  Widget _empty(BuildContext context, AppState state) {
+    // モード絞り込みが原因で0件の場合は、両モード表示を促す。
+    final hasHiddenByMode = !state.showAllModes &&
+        state.allPins.any((p) => p.mode != state.mode);
+    final modeLabel = state.mode == AppMode.disaster ? '災害' : '平時';
+
     return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: const [
-          Icon(Icons.push_pin_outlined, size: 56, color: Colors.black26),
-          SizedBox(height: 12),
-          Text('まだピンがありません',
-              style: TextStyle(color: Colors.black45, fontSize: 15)),
-          SizedBox(height: 4),
-          Text('地図タブから「ピンを立てる」で投稿できます',
-              style: TextStyle(color: Colors.black38, fontSize: 12.5)),
-        ],
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 24),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Icon(Icons.push_pin_outlined, size: 56, color: Colors.black26),
+            const SizedBox(height: 12),
+            Text('$modeLabelモードのピンはありません',
+                style:
+                    const TextStyle(color: Colors.black45, fontSize: 15)),
+            const SizedBox(height: 4),
+            if (hasHiddenByMode) ...[
+              const Text('別のモードで投稿されたピンがあります',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black38, fontSize: 12.5)),
+              const SizedBox(height: 12),
+              OutlinedButton.icon(
+                onPressed: () => state.setShowAllModes(true),
+                icon: const Icon(Icons.layers_rounded, size: 16),
+                label: const Text('両モードのピンを表示'),
+              ),
+            ] else
+              const Text('地図タブから「ピンを立てる」で投稿できます',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(color: Colors.black38, fontSize: 12.5)),
+          ],
+        ),
       ),
     );
   }

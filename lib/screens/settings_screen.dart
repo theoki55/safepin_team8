@@ -1,9 +1,13 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
 import '../models/enums.dart';
 import '../providers/app_state.dart';
+import '../services/pin_import_service.dart';
 import '../utils/constants.dart';
+import 'multi_delete_screen.dart';
 
 /// 設定画面: モード切替・投稿者名・アプリ情報。
 class SettingsScreen extends StatelessWidget {
@@ -27,12 +31,46 @@ class SettingsScreen extends StatelessWidget {
             _sectionTitle('データ'),
             const SizedBox(height: 8),
             Card(
-              child: ListTile(
-                leading: const Icon(Icons.delete_sweep_outlined,
-                    color: Colors.redAccent),
-                title: const Text('すべてのピンを削除'),
-                subtitle: Text('現在 ${state.allPins.length} 件'),
-                onTap: () => _confirmClear(context, state),
+              child: Column(
+                children: [
+                  ListTile(
+                    leading: const Icon(Icons.upload_file_rounded,
+                        color: Color(0xFFE64A2E)),
+                    title: const Text('一括アップロード（インポート）'),
+                    subtitle: const Text('CSV / JSON ファイルからピンをまとめて登録'),
+                    onTap: () => _importPins(context, state),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.download_rounded,
+                        color: Colors.blueGrey),
+                    title: const Text('エクスポート'),
+                    subtitle: Text('現在の ${state.allPins.length} 件を CSV / JSON で出力'),
+                    onTap: state.allPins.isEmpty
+                        ? null
+                        : () => _exportPins(context, state),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.checklist_rounded,
+                        color: Colors.indigo),
+                    title: const Text('複数選択して削除'),
+                    subtitle: const Text('ピンを選んでまとめて削除'),
+                    onTap: state.allPins.isEmpty
+                        ? null
+                        : () => _openMultiDelete(context),
+                  ),
+                  const Divider(height: 1),
+                  ListTile(
+                    leading: const Icon(Icons.delete_sweep_outlined,
+                        color: Colors.redAccent),
+                    title: const Text('すべてのピンを削除'),
+                    subtitle: Text('現在 ${state.allPins.length} 件'),
+                    onTap: state.allPins.isEmpty
+                        ? null
+                        : () => _confirmClear(context, state),
+                  ),
+                ],
               ),
             ),
             const SizedBox(height: 24),
@@ -215,7 +253,7 @@ class SettingsScreen extends StatelessWidget {
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('すべてのピンを削除しますか？'),
-        content: const Text('この操作は取り消せません。'),
+        content: Text('${state.allPins.length} 件すべてを削除します。この操作は取り消せません。'),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -224,14 +262,250 @@ class SettingsScreen extends StatelessWidget {
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
               final ids = state.allPins.map((e) => e.id).toList();
-              for (final id in ids) {
-                await state.deletePin(id);
-              }
-              if (ctx.mounted) Navigator.pop(ctx);
+              Navigator.pop(ctx);
+              final messenger = ScaffoldMessenger.of(context);
+              final n = await state.deletePins(ids);
+              messenger.showSnackBar(
+                SnackBar(content: Text('$n 件のピンを削除しました')),
+              );
             },
             child: const Text('削除'),
           ),
         ],
+      ),
+    );
+  }
+
+  // ---------------- 一括アップロード ----------------
+  Future<void> _importPins(BuildContext context, AppState state) async {
+    final messenger = ScaffoldMessenger.of(context);
+    final service = PinImportService();
+
+    // まず説明ダイアログ(フォーマット案内 + テンプレコピー)
+    final proceed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('一括アップロード'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('CSV または JSON ファイルを選択してください。',
+                style: TextStyle(fontSize: 13.5)),
+            const SizedBox(height: 10),
+            const Text('CSV の列（1行目はヘッダ）:',
+                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 12.5)),
+            const SizedBox(height: 4),
+            const Text(
+              'type, title, comment, lat, lng, priority, status, mode, authorName\n'
+              '※ lat / lng は必須。type は need/offer/info。',
+              style: TextStyle(fontSize: 11.5, height: 1.5),
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () async {
+                  await Clipboard.setData(
+                      ClipboardData(text: service.sampleCsv()));
+                  messenger.showSnackBar(const SnackBar(
+                      content: Text('CSVテンプレートをコピーしました')));
+                },
+                icon: const Icon(Icons.copy, size: 15),
+                label: const Text('CSVテンプレートをコピー',
+                    style: TextStyle(fontSize: 12)),
+                style: TextButton.styleFrom(
+                    padding: EdgeInsets.zero,
+                    minimumSize: Size.zero,
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
+              ),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('キャンセル')),
+          FilledButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('ファイルを選択'),
+          ),
+        ],
+      ),
+    );
+    if (proceed != true) return;
+
+    // ファイル選択
+    FilePickerResult? picked;
+    try {
+      picked = await FilePicker.platform.pickFiles(
+        withData: true,
+        type: FileType.custom,
+        allowedExtensions: const ['csv', 'json', 'txt'],
+      );
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('ファイル選択エラー: $e')));
+      return;
+    }
+    if (picked == null || picked.files.isEmpty) return;
+    final file = picked.files.first;
+    final bytes = file.bytes;
+    if (bytes == null) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('ファイルの読み込みに失敗しました')));
+      return;
+    }
+
+    String content;
+    try {
+      content = String.fromCharCodes(bytes);
+    } catch (_) {
+      messenger.showSnackBar(
+          const SnackBar(content: Text('ファイルの文字コードを読み取れませんでした')));
+      return;
+    }
+
+    final result = service.parse(content, fileName: file.name);
+    if (!result.hasPins) {
+      if (!context.mounted) return;
+      await _showImportError(context, result);
+      return;
+    }
+
+    // 確認ダイアログ
+    if (!context.mounted) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('インポート内容の確認'),
+        content: Text(
+          '読み込み: ${result.total} 件\n'
+          '登録可能: ${result.pins.length} 件\n'
+          '${result.skipped > 0 ? "スキップ: ${result.skipped} 件（不正データ）\n" : ""}'
+          '\nこれらを現在のモード設定に関わらず登録します。よろしいですか？',
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('キャンセル')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: Text('${result.pins.length}件を登録')),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+
+    // 登録実行(プログレス)
+    if (!context.mounted) return;
+    _showProgress(context, '登録中...');
+    final added = await state.addPins(result.pins);
+    if (context.mounted) Navigator.pop(context); // プログレス閉じる
+    messenger.showSnackBar(
+      SnackBar(content: Text('$added 件のピンを登録しました')),
+    );
+  }
+
+  Future<void> _showImportError(
+      BuildContext context, ImportResult result) async {
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('インポートできませんでした'),
+        content: SingleChildScrollView(
+          child: Text(
+            result.errors.isEmpty
+                ? '有効なデータが見つかりませんでした。'
+                : result.errors.take(10).join('\n'),
+            style: const TextStyle(fontSize: 12.5),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('閉じる')),
+        ],
+      ),
+    );
+  }
+
+  // ---------------- エクスポート ----------------
+  Future<void> _exportPins(BuildContext context, AppState state) async {
+    final service = PinImportService();
+    final messenger = ScaffoldMessenger.of(context);
+    final format = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('エクスポート形式'),
+        content: const Text('形式を選択してください。'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'csv'),
+              child: const Text('CSV')),
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, 'json'),
+              child: const Text('JSON')),
+        ],
+      ),
+    );
+    if (format == null) return;
+    final pins = state.allPins;
+    final text =
+        format == 'csv' ? service.toCsv(pins) : service.toJson(pins);
+
+    if (!context.mounted) return;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('エクスポート (${format.toUpperCase()})'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              text,
+              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: text));
+              messenger.showSnackBar(
+                  const SnackBar(content: Text('クリップボードにコピーしました')));
+            },
+            child: const Text('コピー'),
+          ),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx),
+              child: const Text('閉じる')),
+        ],
+      ),
+    );
+  }
+
+  // ---------------- 複数選択削除 ----------------
+  void _openMultiDelete(BuildContext context) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const MultiDeleteScreen()),
+    );
+  }
+
+  void _showProgress(BuildContext context, String message) {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => AlertDialog(
+        content: Row(
+          children: [
+            const SizedBox(
+                width: 22,
+                height: 22,
+                child: CircularProgressIndicator(strokeWidth: 2.5)),
+            const SizedBox(width: 16),
+            Text(message),
+          ],
+        ),
       ),
     );
   }

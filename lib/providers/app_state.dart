@@ -37,9 +37,26 @@ class AppState extends ChangeNotifier {
   final Set<PinStatus> _statusFilter = {...PinStatus.values};
   bool _hideResolved = false;
 
+  /// 全モードのピンを表示するか。
+  /// false のときは現在のアプリモード([_mode])と一致するピンのみ表示する。
+  bool _showAllModes = false;
+
   Set<PinType> get typeFilter => _typeFilter;
   Set<PinStatus> get statusFilter => _statusFilter;
   bool get hideResolved => _hideResolved;
+  bool get showAllModes => _showAllModes;
+
+  /// モードに応じた種別の推奨(強調)フィルタ。
+  /// - 災害モード: NEED を強調(NEED/OFFER を表示、INFO は隠す)
+  /// - 平時モード: INFO 中心(INFO/OFFER を表示、NEED は隠す)
+  static Set<PinType> _recommendedTypeFilter(AppMode mode) {
+    switch (mode) {
+      case AppMode.disaster:
+        return {PinType.need, PinType.offer};
+      case AppMode.normal:
+        return {PinType.info, PinType.offer};
+    }
+  }
 
   Future<void> init() async {
     _loading = true;
@@ -47,6 +64,8 @@ class AppState extends ChangeNotifier {
     await repository.init();
     _mode = await settings.loadMode();
     _authorName = await settings.loadAuthorName();
+    // 起動時、現在のモードに応じた推奨フィルタを適用する。
+    _applyRecommendedFilter(_mode);
 
     // リアルタイム同期が可能ならストリーム購読、不可なら一括取得
     final stream = repository.watch();
@@ -102,6 +121,8 @@ class AppState extends ChangeNotifier {
 
   List<Pin> get filteredPins {
     return _pins.where((p) {
+      // モード別絞り込み: 「全モード表示」でなければ現在のモードのピンのみ
+      if (!_showAllModes && p.mode != _mode) return false;
       if (!_typeFilter.contains(p.type)) return false;
       if (!_statusFilter.contains(p.status)) return false;
       if (_hideResolved && p.status == PinStatus.resolved) return false;
@@ -109,12 +130,17 @@ class AppState extends ChangeNotifier {
     }).toList();
   }
 
-  int countByType(PinType type) => _pins.where((p) => p.type == type).length;
+  /// 現在のモードで表示対象になるピン(種別フィルタ等は無視、モードのみ考慮)。
+  Iterable<Pin> get _pinsForCurrentMode =>
+      _showAllModes ? _pins : _pins.where((p) => p.mode == _mode);
+
+  int countByType(PinType type) =>
+      _pinsForCurrentMode.where((p) => p.type == type).length;
 
   int get unresolvedCount =>
-      _pins.where((p) => p.status != PinStatus.resolved).length;
+      _pinsForCurrentMode.where((p) => p.status != PinStatus.resolved).length;
 
-  int get urgentNeedCount => _pins
+  int get urgentNeedCount => _pinsForCurrentMode
       .where((p) =>
           p.type == PinType.need &&
           p.priority == PinPriority.high &&
@@ -155,6 +181,38 @@ class AppState extends ChangeNotifier {
     }
   }
 
+  /// 複数ピンを一括削除する。削除できた件数を返す。
+  Future<int> deletePins(Iterable<String> ids) async {
+    var deleted = 0;
+    for (final id in ids) {
+      try {
+        await repository.delete(id);
+        if (!_realtime) _pins.removeWhere((p) => p.id == id);
+        deleted++;
+      } catch (e) {
+        if (kDebugMode) debugPrint('deletePins error for $id: $e');
+      }
+    }
+    if (!_realtime) notifyListeners();
+    return deleted;
+  }
+
+  /// 複数ピンを一括追加(インポート)する。追加できた件数を返す。
+  Future<int> addPins(List<Pin> pins) async {
+    var added = 0;
+    for (final pin in pins) {
+      try {
+        await repository.add(pin);
+        if (!_realtime) _pins.insert(0, pin);
+        added++;
+      } catch (e) {
+        if (kDebugMode) debugPrint('addPins error for ${pin.id}: $e');
+      }
+    }
+    if (!_realtime) notifyListeners();
+    return added;
+  }
+
   Pin? pinById(String id) {
     for (final p in _pins) {
       if (p.id == id) return p;
@@ -164,13 +222,27 @@ class AppState extends ChangeNotifier {
 
   // ---- 設定変更 ----
   Future<void> setMode(AppMode mode) async {
+    final changed = _mode != mode;
     _mode = mode;
     await settings.saveMode(mode);
+    // モードが変わったら推奨フィルタを再適用する。
+    if (changed) {
+      _applyRecommendedFilter(mode);
+    }
     notifyListeners();
   }
 
   Future<void> toggleMode() async {
     await setMode(_mode == AppMode.normal ? AppMode.disaster : AppMode.normal);
+  }
+
+  /// モードに応じた推奨フィルタを適用する(モード連動フィルタ)。
+  void _applyRecommendedFilter(AppMode mode) {
+    final recommended = _recommendedTypeFilter(mode);
+    _typeFilter
+      ..clear()
+      ..addAll(recommended);
+    // ステータス・対応済み表示はモード切替では変更しない。
   }
 
   Future<void> setAuthorName(String name) async {
@@ -203,6 +275,17 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
+  void setShowAllModes(bool value) {
+    _showAllModes = value;
+    notifyListeners();
+  }
+
+  /// 種別フィルタを現在のモードの推奨状態に戻す。
+  void applyRecommendedFilterForCurrentMode() {
+    _applyRecommendedFilter(_mode);
+    notifyListeners();
+  }
+
   void resetFilters() {
     _typeFilter
       ..clear()
@@ -211,11 +294,13 @@ class AppState extends ChangeNotifier {
       ..clear()
       ..addAll(PinStatus.values);
     _hideResolved = false;
+    _showAllModes = false;
     notifyListeners();
   }
 
   bool get isFiltered =>
       _typeFilter.length != PinType.values.length ||
       _statusFilter.length != PinStatus.values.length ||
-      _hideResolved;
+      _hideResolved ||
+      _showAllModes;
 }

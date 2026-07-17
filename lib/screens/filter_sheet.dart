@@ -4,6 +4,9 @@ import 'package:provider/provider.dart';
 import '../models/enums.dart';
 import '../providers/app_state.dart';
 
+const _disasterColor = Color(0xFFD32F2F);
+const _normalColor = Color(0xFF2E7D32);
+
 /// 種別・ステータスで絞り込むボトムシート。
 class FilterSheet extends StatelessWidget {
   const FilterSheet({super.key});
@@ -57,9 +60,35 @@ class FilterSheet extends StatelessWidget {
                     ],
                   ),
                   const SizedBox(height: 8),
-                  const Text('種別',
-                      style: TextStyle(
-                          fontWeight: FontWeight.w700, fontSize: 14.5)),
+                  // ---- 表示モード ----
+                  _ModeSection(state: state),
+                  const SizedBox(height: 18),
+                  Row(
+                    children: [
+                      const Text('種別',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w700, fontSize: 14.5)),
+                      const Spacer(),
+                      TextButton.icon(
+                        onPressed: () =>
+                            state.applyRecommendedFilterForCurrentMode(),
+                        icon: const Icon(Icons.auto_awesome, size: 15),
+                        label: Text(
+                          state.mode == AppMode.disaster
+                              ? '災害モードの推奨に戻す'
+                              : '平時モードの推奨に戻す',
+                          style: const TextStyle(fontSize: 12),
+                        ),
+                        style: TextButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 6),
+                          minimumSize: Size.zero,
+                          tapTargetSize:
+                              MaterialTapTargetSize.shrinkWrap,
+                        ),
+                      ),
+                    ],
+                  ),
                   const SizedBox(height: 10),
                   Wrap(
                     spacing: 8,
@@ -135,6 +164,78 @@ class FilterSheet extends StatelessWidget {
           },
         ),
       ),
+    );
+  }
+}
+
+/// 表示モード(平時/災害)の絞り込みセクション。
+class _ModeSection extends StatelessWidget {
+  final AppState state;
+  const _ModeSection({required this.state});
+
+  @override
+  Widget build(BuildContext context) {
+    final isDisaster = state.mode == AppMode.disaster;
+    final modeColor = isDisaster ? _disasterColor : _normalColor;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('表示モード',
+            style: TextStyle(fontWeight: FontWeight.w700, fontSize: 14.5)),
+        const SizedBox(height: 10),
+        Container(
+          padding: const EdgeInsets.all(12),
+          decoration: BoxDecoration(
+            color: modeColor.withValues(alpha: 0.08),
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(color: modeColor.withValues(alpha: 0.3)),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
+                children: [
+                  Icon(
+                    isDisaster
+                        ? Icons.warning_amber_rounded
+                        : Icons.wb_sunny_outlined,
+                    color: modeColor,
+                    size: 18,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    isDisaster ? '現在: 災害モード' : '現在: 平時モード',
+                    style: TextStyle(
+                        color: modeColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 13.5),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 4),
+              Text(
+                state.showAllModes
+                    ? '平時・災害の両方のピンを表示しています'
+                    : isDisaster
+                        ? '災害モードで投稿されたピンのみ表示しています'
+                        : '平時モードで投稿されたピンのみ表示しています',
+                style: const TextStyle(color: Colors.black54, fontSize: 12),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                dense: true,
+                title: const Text('両モードのピンを表示',
+                    style: TextStyle(fontSize: 13.5)),
+                subtitle: const Text('平時・災害のピンをまとめて表示',
+                    style: TextStyle(fontSize: 11.5)),
+                value: state.showAllModes,
+                activeThumbColor: modeColor,
+                onChanged: (v) => state.setShowAllModes(v),
+              ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
