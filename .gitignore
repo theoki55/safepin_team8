@@ -43,3 +43,21 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# ---- Secrets / Firebase credentials (機密情報: コミット禁止) ----
+# 実際の値を含む Firebase 設定(雛形は firebase_options.template.dart を使用)
+lib/firebase_options.dart
+# Firebase Admin SDK 秘密鍵・サービスアカウント
+**/firebase-admin-sdk.json
+**/*adminsdk*.json
+**/serviceAccount*.json
+# Android Firebase 設定・署名鍵
+**/google-services.json
+*.jks
+*.keystore
+**/key.properties
+# 汎用の秘密情報
+*.pem
+*.p12
+.env
+.env.*
