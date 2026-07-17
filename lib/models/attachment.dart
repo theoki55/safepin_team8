@@ -19,6 +19,9 @@ class Attachment {
   /// クラウド保存時のダウンロードURL(ローカル版では null)
   final String? url;
 
+  /// Storage 上のパス(削除時に使用。ローカル版では null)
+  final String? storagePath;
+
   const Attachment({
     required this.id,
     required this.kind,
@@ -27,7 +30,20 @@ class Attachment {
     required this.sizeBytes,
     this.dataUrl,
     this.url,
+    this.storagePath,
   });
+
+  Attachment copyWith({String? url, String? storagePath, String? dataUrl}) =>
+      Attachment(
+        id: id,
+        kind: kind,
+        name: name,
+        mimeType: mimeType,
+        sizeBytes: sizeBytes,
+        dataUrl: dataUrl ?? this.dataUrl,
+        url: url ?? this.url,
+        storagePath: storagePath ?? this.storagePath,
+      );
 
   bool get isImage => kind == AttachmentKind.image;
 
@@ -46,6 +62,7 @@ class Attachment {
     return '${s.toStringAsFixed(s < 10 && i > 0 ? 1 : 0)} ${units[i]}';
   }
 
+  /// ローカル(Hive)用: base64 も含めて保存。
   Map<String, dynamic> toMap() => {
         'id': id,
         'kind': kind.name,
@@ -54,6 +71,18 @@ class Attachment {
         'sizeBytes': sizeBytes,
         'dataUrl': dataUrl,
         'url': url,
+        'storagePath': storagePath,
+      };
+
+  /// Firestore 用: base64(dataUrl)は保存せず、Storage URL のみ保存。
+  Map<String, dynamic> toFirestoreMap() => {
+        'id': id,
+        'kind': kind.name,
+        'name': name,
+        'mimeType': mimeType,
+        'sizeBytes': sizeBytes,
+        'url': url,
+        'storagePath': storagePath,
       };
 
   factory Attachment.fromMap(Map<dynamic, dynamic> map) => Attachment(
@@ -67,5 +96,6 @@ class Attachment {
         sizeBytes: (map['sizeBytes'] as num?)?.toInt() ?? 0,
         dataUrl: map['dataUrl'] as String?,
         url: map['url'] as String?,
+        storagePath: map['storagePath'] as String?,
       );
 }

@@ -91,6 +91,23 @@ class Pin {
         'updatedAt': updatedAt.toIso8601String(),
       };
 
+  /// Firestore 用マップ。添付は Storage URL のみ、日時は ISO 文字列で保存。
+  Map<String, dynamic> toFirestoreMap() => {
+        'id': id,
+        'type': type.name,
+        'status': status.name,
+        'priority': priority.name,
+        'title': title,
+        'comment': comment,
+        'lat': lat,
+        'lng': lng,
+        'authorName': authorName,
+        'mode': mode.name,
+        'attachments': attachments.map((a) => a.toFirestoreMap()).toList(),
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
+
   factory Pin.fromMap(Map<dynamic, dynamic> map) {
     final rawAttachments = (map['attachments'] as List?) ?? const [];
     return Pin(

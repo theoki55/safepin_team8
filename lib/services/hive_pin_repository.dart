@@ -8,7 +8,7 @@ import 'pin_repository.dart';
 /// ピンは `Map<String, dynamic>` として box に格納する。
 /// これにより TypeAdapter のコード生成なしで動作し、
 /// 将来 Firestore へ移行する際もデータ形状を再利用できる。
-class HivePinRepository implements PinRepository {
+class HivePinRepository extends PinRepository {
   static const String _boxName = 'pins_box';
   Box? _box;
 

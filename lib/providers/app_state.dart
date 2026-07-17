@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/enums.dart';
@@ -17,6 +19,11 @@ class AppState extends ChangeNotifier {
   List<Pin> _pins = [];
   bool _loading = true;
   bool get loading => _loading;
+
+  /// リアルタイム同期を使うかどうか(repository.watch() が非null)
+  StreamSubscription<List<Pin>>? _pinsSub;
+  bool _realtime = false;
+  bool get realtime => _realtime;
 
   // ---- 設定 ----
   AppMode _mode = AppMode.normal;
@@ -40,9 +47,54 @@ class AppState extends ChangeNotifier {
     await repository.init();
     _mode = await settings.loadMode();
     _authorName = await settings.loadAuthorName();
-    _pins = await repository.getAll();
-    _loading = false;
-    notifyListeners();
+
+    // リアルタイム同期が可能ならストリーム購読、不可なら一括取得
+    final stream = repository.watch();
+    if (stream != null) {
+      _realtime = true;
+      // 初回の1件目を待ってから loading を解除する
+      final completer = Completer<void>();
+      _pinsSub = stream.listen(
+        (pins) {
+          _pins = pins;
+          if (_loading) {
+            _loading = false;
+            if (!completer.isCompleted) completer.complete();
+          }
+          notifyListeners();
+        },
+        onError: (Object e, StackTrace st) {
+          if (kDebugMode) {
+            debugPrint('AppState watch error: $e');
+          }
+          if (_loading) {
+            _loading = false;
+            if (!completer.isCompleted) completer.complete();
+          }
+          notifyListeners();
+        },
+      );
+      // 最大5秒待つ(接続が遅い場合でもUIをブロックしない)
+      await Future.any([
+        completer.future,
+        Future<void>.delayed(const Duration(seconds: 5)),
+      ]);
+      if (_loading) {
+        _loading = false;
+        notifyListeners();
+      }
+    } else {
+      _realtime = false;
+      _pins = await repository.getAll();
+      _loading = false;
+      notifyListeners();
+    }
+  }
+
+  @override
+  void dispose() {
+    _pinsSub?.cancel();
+    super.dispose();
   }
 
   // ---- ピン一覧(フィルタ適用済み) ----
@@ -70,19 +122,25 @@ class AppState extends ChangeNotifier {
       .length;
 
   // ---- CRUD ----
+  // リアルタイム同期時は snapshot が _pins を更新するため、
+  // ローカルリストは直接操作しない。非リアルタイム時のみ手動で更新する。
   Future<void> addPin(Pin pin) async {
     await repository.add(pin);
-    _pins.insert(0, pin);
-    notifyListeners();
+    if (!_realtime) {
+      _pins.insert(0, pin);
+      notifyListeners();
+    }
   }
 
   Future<void> updatePin(Pin pin) async {
     await repository.update(pin);
-    final i = _pins.indexWhere((p) => p.id == pin.id);
-    if (i >= 0) {
-      _pins[i] = pin;
+    if (!_realtime) {
+      final i = _pins.indexWhere((p) => p.id == pin.id);
+      if (i >= 0) {
+        _pins[i] = pin;
+      }
+      notifyListeners();
     }
-    notifyListeners();
   }
 
   Future<void> updateStatus(Pin pin, PinStatus status) async {
@@ -91,8 +149,10 @@ class AppState extends ChangeNotifier {
 
   Future<void> deletePin(String id) async {
     await repository.delete(id);
-    _pins.removeWhere((p) => p.id == id);
-    notifyListeners();
+    if (!_realtime) {
+      _pins.removeWhere((p) => p.id == id);
+      notifyListeners();
+    }
   }
 
   Pin? pinById(String id) {
