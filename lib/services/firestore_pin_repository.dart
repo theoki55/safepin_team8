@@ -23,7 +23,17 @@ class FirestorePinRepository extends PinRepository {
 
   @override
   Future<void> init() async {
-    // Firestore は遅延接続のため特別な初期化は不要。
+    // シークレット/プライベートモードでは IndexedDB が無効化される
+    // ことがあり、Firestore のオフライン永続化(既定で有効)が失敗して
+    // 画面が真っ白になる。SafePin はリアルタイム同期主体のため、
+    // 永続化を無効化(メモリキャッシュ)して全ブラウザで安定動作させる。
+    try {
+      _db.settings = const Settings(persistenceEnabled: false);
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('Firestore settings error (ignored): $e');
+      }
+    }
   }
 
   @override
