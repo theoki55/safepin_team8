@@ -37,6 +37,25 @@
     (期待バージョン: 11.9.1)。手動で <script> を追加するとバージョン不一致で
     channel-error になるため、ここには記述しない。
   -->
+
+  <!--
+    以前に登録された古い Service Worker が、バグを含む古いキャッシュを
+    配信し続ける問題を防ぐため、既存の Service Worker を明示的に解除する。
+  -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(function (regs) {
+        for (var i = 0; i < regs.length; i++) {
+          regs[i].unregister();
+        }
+      }).catch(function () {});
+      if (window.caches && caches.keys) {
+        caches.keys().then(function (keys) {
+          keys.forEach(function (k) { caches.delete(k); });
+        }).catch(function () {});
+      }
+    }
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
