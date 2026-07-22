@@ -17,6 +17,11 @@ class Pin {
   /// 投稿者名(任意入力、匿名可)
   final String authorName;
 
+  /// 投稿者の匿名ID(Firebase Anonymous Auth の uid)。
+  /// 自分の投稿だけを編集/削除できるようにするための識別子。
+  /// 過去データや認証失敗時は空文字。
+  final String authorUid;
+
   /// 平時 / 災害 どちらのモードで投稿されたか
   final AppMode mode;
 
@@ -35,6 +40,7 @@ class Pin {
     required this.lat,
     required this.lng,
     required this.authorName,
+    this.authorUid = '',
     required this.mode,
     required this.attachments,
     required this.createdAt,
@@ -50,6 +56,7 @@ class Pin {
     double? lat,
     double? lng,
     String? authorName,
+    String? authorUid,
     AppMode? mode,
     List<Attachment>? attachments,
     DateTime? updatedAt,
@@ -64,6 +71,7 @@ class Pin {
       lat: lat ?? this.lat,
       lng: lng ?? this.lng,
       authorName: authorName ?? this.authorName,
+      authorUid: authorUid ?? this.authorUid,
       mode: mode ?? this.mode,
       attachments: attachments ?? this.attachments,
       createdAt: createdAt,
@@ -85,6 +93,7 @@ class Pin {
         'lat': lat,
         'lng': lng,
         'authorName': authorName,
+        'authorUid': authorUid,
         'mode': mode.name,
         'attachments': attachments.map((a) => a.toMap()).toList(),
         'createdAt': createdAt.toIso8601String(),
@@ -102,6 +111,7 @@ class Pin {
         'lat': lat,
         'lng': lng,
         'authorName': authorName,
+        'authorUid': authorUid,
         'mode': mode.name,
         'attachments': attachments.map((a) => a.toFirestoreMap()).toList(),
         'createdAt': createdAt.toIso8601String(),
@@ -120,6 +130,7 @@ class Pin {
       lat: (map['lat'] as num).toDouble(),
       lng: (map['lng'] as num).toDouble(),
       authorName: (map['authorName'] as String?) ?? '匿名',
+      authorUid: (map['authorUid'] as String?) ?? '',
       mode: AppMode.fromName(map['mode'] as String? ?? 'normal'),
       attachments: rawAttachments
           .whereType<Map>()

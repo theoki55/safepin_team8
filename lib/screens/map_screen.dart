@@ -7,6 +7,7 @@ import '../models/enums.dart';
 import '../providers/app_state.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
+import '../utils/location_blur.dart';
 import '../widgets/pin_marker.dart';
 import 'filter_sheet.dart';
 import 'pin_detail_sheet.dart';
@@ -102,10 +103,26 @@ class _MapScreenState extends State<MapScreen> {
                   userAgentPackageName: AppConstants.osmUserAgent,
                   maxZoom: 19,
                 ),
+                // ぼかし円: NEED/OFFER は自宅等と結びつくため、
+                // 正確な位置ではなく「このあたり(約150m四方)」を示す円を描く。
+                CircleLayer(
+                  circles: [
+                    for (final pin in pins)
+                      if (LocationBlur.isBlurred(pin))
+                        CircleMarker(
+                          point: LocationBlur.displayLatLng(pin),
+                          radius: LocationBlur.circleRadiusMeters,
+                          useRadiusInMeter: true,
+                          color: pin.type.color.withValues(alpha: 0.14),
+                          borderColor: pin.type.color.withValues(alpha: 0.5),
+                          borderStrokeWidth: 1.5,
+                        ),
+                  ],
+                ),
                 MarkerLayer(
                   markers: pins.map((pin) {
                     return Marker(
-                      point: LatLng(pin.lat, pin.lng),
+                      point: LocationBlur.displayLatLng(pin),
                       width: 44,
                       height: 52,
                       alignment: Alignment.topCenter,

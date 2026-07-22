@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/enums.dart';
 import '../models/pin.dart';
+import '../services/auth_service.dart';
 import '../services/pin_repository.dart';
 import '../services/settings_service.dart';
 
@@ -12,8 +13,32 @@ import '../services/settings_service.dart';
 class AppState extends ChangeNotifier {
   final PinRepository repository;
   final SettingsService settings;
+  final AuthService auth;
 
-  AppState({required this.repository, required this.settings});
+  AppState({
+    required this.repository,
+    required this.settings,
+    required this.auth,
+  });
+
+  /// 端末ごとの匿名ID(未認証なら空文字)。
+  String get currentUid => auth.uid ?? '';
+
+  /// 匿名サインインを(再)確保する。既にサインイン済みなら即返る。
+  /// 投稿直前など、uid を確実に付けたいタイミングで呼ぶ。
+  Future<void> ensureSignedIn() async {
+    if ((auth.uid ?? '').isNotEmpty) return;
+    await auth.ensureSignedIn();
+    notifyListeners();
+  }
+
+  /// このピンが「自分の投稿」かどうか。
+  /// authorUid が一致する場合のみ true。
+  /// (過去データなど authorUid が空のピンは、誰でも操作できるよう true 扱い)
+  bool isMine(Pin pin) {
+    if (pin.authorUid.isEmpty) return true;
+    return pin.authorUid == currentUid;
+  }
 
   // ---- データ ----
   List<Pin> _pins = [];

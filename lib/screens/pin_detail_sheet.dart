@@ -5,6 +5,7 @@ import '../models/enums.dart';
 import '../models/pin.dart';
 import '../providers/app_state.dart';
 import '../utils/format.dart';
+import '../utils/location_blur.dart';
 import '../widgets/attachment_view.dart';
 import '../widgets/badges.dart';
 
@@ -57,6 +58,8 @@ class _DetailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final state = context.read<AppState>();
+    final mine = state.isMine(pin);
     return Column(
       children: [
         const SizedBox(height: 10),
@@ -79,23 +82,25 @@ class _DetailBody extends StatelessWidget {
                   const SizedBox(width: 8),
                   PriorityChip(priority: pin.priority),
                   const Spacer(),
-                  PopupMenuButton<String>(
-                    onSelected: (v) {
-                      if (v == 'delete') _confirmDelete(context, pin);
-                    },
-                    itemBuilder: (_) => [
-                      const PopupMenuItem(
-                        value: 'delete',
-                        child: Row(
-                          children: [
-                            Icon(Icons.delete_outline, color: Colors.red),
-                            SizedBox(width: 8),
-                            Text('削除'),
-                          ],
+                  // 削除は自分の投稿(匿名IDが一致)のみ可能。
+                  if (mine)
+                    PopupMenuButton<String>(
+                      onSelected: (v) {
+                        if (v == 'delete') _confirmDelete(context, pin);
+                      },
+                      itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'delete',
+                          child: Row(
+                            children: [
+                              Icon(Icons.delete_outline, color: Colors.red),
+                              SizedBox(width: 8),
+                              Text('削除'),
+                            ],
+                          ),
                         ),
-                      ),
-                    ],
-                  ),
+                      ],
+                    ),
                 ],
               ),
               const SizedBox(height: 10),
@@ -147,30 +152,74 @@ class _DetailBody extends StatelessWidget {
               const SizedBox(height: 12),
               _StatusStepper(pin: pin),
               const SizedBox(height: 20),
-              _sectionLabel(Icons.place_outlined, '位置'),
-              const SizedBox(height: 8),
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.my_location_rounded,
-                        size: 18, color: Colors.black45),
-                    const SizedBox(width: 8),
-                    Text(formatLatLng(pin.lat, pin.lng),
-                        style: const TextStyle(
-                            fontSize: 13, color: Colors.black54)),
-                  ],
-                ),
+              _sectionLabel(
+                LocationBlur.isBlurred(pin)
+                    ? Icons.blur_circular_rounded
+                    : Icons.place_outlined,
+                LocationBlur.isBlurred(pin) ? 'おおよその位置' : '位置',
               ),
+              const SizedBox(height: 8),
+              _locationBox(pin),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// 位置表示ボックス。
+  /// NEED/OFFER はプライバシー保護のため、正確な座標を伏せて
+  /// 約150mグリッド中心の「おおよその位置」を示す。
+  Widget _locationBox(Pin pin) {
+    final blurred = LocationBlur.isBlurred(pin);
+    final display = LocationBlur.displayLatLng(pin);
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.black.withValues(alpha: 0.06)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                blurred
+                    ? Icons.blur_circular_rounded
+                    : Icons.my_location_rounded,
+                size: 18,
+                color: Colors.black45,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                formatLatLng(display.latitude, display.longitude),
+                style: const TextStyle(fontSize: 13, color: Colors.black54),
+              ),
+            ],
+          ),
+          if (blurred) ...[
+            const SizedBox(height: 8),
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: const [
+                Icon(Icons.shield_outlined,
+                    size: 15, color: Color(0xFF00897B)),
+                SizedBox(width: 6),
+                Expanded(
+                  child: Text(
+                    'プライバシー保護のため、正確な位置は伏せて'
+                    'おおよそ150m四方の範囲で表示しています。',
+                    style: TextStyle(
+                        fontSize: 11.5, color: Colors.black54, height: 1.4),
+                  ),
+                ),
+              ],
+            ),
+          ],
+        ],
+      ),
     );
   }
 
@@ -219,6 +268,8 @@ class _StatusStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
+    // ステータス変更は自分の投稿(匿名IDが一致)のみ可能。
+    final canEdit = state.isMine(pin);
     // 種別ごとの選択可能なステータス一覧(順序どおり)
     final statuses = pin.type.availableStatuses;
     // 現在ステータスの、この一覧内での位置(見つからなければ0)
@@ -278,20 +329,38 @@ class _StatusStepper extends StatelessWidget {
               selectedColor: s.color,
               backgroundColor: s.color.withValues(alpha: 0.1),
               side: BorderSide(color: s.color.withValues(alpha: 0.5)),
-              onSelected: (_) {
-                if (!selected) {
-                  state.updateStatus(pin, s);
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(
-                      content: Text('ステータスを「${s.label}」に更新しました'),
-                      duration: const Duration(seconds: 2),
-                    ),
-                  );
-                }
-              },
+              onSelected: canEdit
+                  ? (_) {
+                      if (!selected) {
+                        state.updateStatus(pin, s);
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('ステータスを「${s.label}」に更新しました'),
+                            duration: const Duration(seconds: 2),
+                          ),
+                        );
+                      }
+                    }
+                  : null,
             );
           }).toList(),
         ),
+        if (!canEdit) ...[
+          const SizedBox(height: 8),
+          Row(
+            children: const [
+              Icon(Icons.lock_outline_rounded,
+                  size: 14, color: Colors.black38),
+              SizedBox(width: 5),
+              Expanded(
+                child: Text(
+                  'ステータスの変更・削除は、この投稿をした端末からのみ行えます。',
+                  style: TextStyle(fontSize: 11.5, color: Colors.black45),
+                ),
+              ),
+            ],
+          ),
+        ],
       ],
     );
   }

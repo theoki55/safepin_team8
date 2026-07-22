@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import 'firebase_options.dart';
 import 'providers/app_state.dart';
 import 'screens/home_screen.dart';
+import 'services/auth_service.dart';
 import 'services/firestore_pin_repository.dart';
 import 'services/settings_service.dart';
 import 'theme.dart';
@@ -20,11 +21,20 @@ void main() async {
       options: DefaultFirebaseOptions.currentPlatform,
     );
 
+    // 一般住民向けの簡易認証(匿名認証)。
+    // 起動時に端末ごとの匿名IDを自動発行する(ユーザー入力なし)。
+    final authService = AuthService();
+    await authService.ensureSignedIn();
+
     // Firestore + Storage によるクラウド保存(リアルタイム同期)
     final repository = FirestorePinRepository();
     final settings = SettingsService();
 
-    final appState = AppState(repository: repository, settings: settings);
+    final appState = AppState(
+      repository: repository,
+      settings: settings,
+      auth: authService,
+    );
     await appState.init();
 
     if (kDebugMode) {

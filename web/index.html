@@ -33,9 +33,11 @@
   <link rel="manifest" href="manifest.json">
 
   <!--
-    Firebase JS SDK は firebase_core_web プラグインが自動でロードする
-    (期待バージョン: 11.9.1)。手動で <script> を追加するとバージョン不一致で
-    channel-error になるため、ここには記述しない。
+    Firebase JS SDK は firebase_core_web(2.24.0)が modular SDK を
+    動的注入する(auth/firestore/storage を含む)。手動で compat script を
+    追加すると window.firebase が先に定義され、core が「初期化済み」と誤認
+    して自動注入をスキップし、auth が channel-error になる。
+    そのため、ここに Firebase の <script> は一切書かないこと。
   -->
 
   <!--

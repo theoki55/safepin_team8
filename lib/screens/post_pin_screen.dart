@@ -118,6 +118,9 @@ class _PostPinScreenState extends State<PostPinScreen> {
     }
     setState(() => _saving = true);
     final state = context.read<AppState>();
+    // 起動時に匿名サインインが未完了でも、投稿直前に再度確保を試みる。
+    // (Web release ではプラグイン初期化が遅れることがあるため)
+    await state.ensureSignedIn();
     final author =
         _authorCtrl.text.trim().isEmpty ? '匿名' : _authorCtrl.text.trim();
     await state.setAuthorName(_authorCtrl.text.trim());
@@ -133,6 +136,7 @@ class _PostPinScreenState extends State<PostPinScreen> {
       lat: _location!.latitude,
       lng: _location!.longitude,
       authorName: author,
+      authorUid: state.currentUid,
       mode: state.mode,
       attachments: List.of(_attachments),
       createdAt: now,
