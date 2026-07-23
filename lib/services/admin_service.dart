@@ -4,6 +4,7 @@ import 'package:crypto/crypto.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/constants.dart';
+import 'audit_repository.dart';
 
 /// 監査ログ1件。管理者が行った操作(資源の登録・一括アップロード等)を記録する。
 class AuditEntry {
@@ -55,7 +56,16 @@ class AdminService {
   static const _kAdmin = 'is_admin';
   static const _kAdminName = 'admin_name';
   static const _kAdminExpiry = 'admin_expiry'; // ISO8601
-  static const _kAudit = 'admin_audit_log'; // JSON配列文字列
+
+  /// 監査ログの保存先(Firestore 一本化 = 案A)。
+  ///
+  /// セッション/認証状態は端末ローカル(SharedPreferences)のままだが、
+  /// 「いつ誰が何をしたか」の操作ログは Firestore に集約し、端末を
+  /// またいで永続化・共有できるようにする。
+  final AuditRepository auditRepository;
+
+  AdminService({AuditRepository? auditRepository})
+      : auditRepository = auditRepository ?? AuditRepository();
 
   /// 入力された合言葉が正しいか(ハッシュ照合)。
   static bool verifyPassphrase(String input) {
@@ -141,30 +151,10 @@ class AdminService {
     ));
   }
 
-  /// 監査ログを新しい順に取得する。
-  Future<List<AuditEntry>> loadAudit() async {
-    final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString(_kAudit);
-    if (raw == null || raw.isEmpty) return [];
-    try {
-      final list = (jsonDecode(raw) as List).whereType<Map>().toList();
-      final entries = list.map((e) => AuditEntry.fromMap(e)).toList();
-      entries.sort((a, b) => b.at.compareTo(a.at));
-      return entries;
-    } catch (_) {
-      return [];
-    }
-  }
+  /// 監査ログを新しい順に取得する(Firestore から)。
+  Future<List<AuditEntry>> loadAudit() => auditRepository.loadAll();
 
-  Future<void> _appendAudit(AuditEntry entry) async {
-    final prefs = await SharedPreferences.getInstance();
-    final current = await loadAudit();
-    current.insert(0, entry);
-    // 上限を超えたら古いものを切り捨てる
-    final trimmed = current.take(AppConstants.adminAuditMaxEntries).toList();
-    await prefs.setString(
-      _kAudit,
-      jsonEncode(trimmed.map((e) => e.toMap()).toList()),
-    );
-  }
+  /// 監査ログを1件追記する(Firestore へ)。
+  Future<void> _appendAudit(AuditEntry entry) =>
+      auditRepository.append(entry);
 }

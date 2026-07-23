@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../models/enums.dart';
 import '../providers/app_state.dart';
+import '../services/admin_service.dart';
 import '../services/pin_import_service.dart';
 import '../utils/constants.dart';
 import 'multi_delete_screen.dart';
@@ -701,51 +702,84 @@ class SettingsScreen extends StatelessWidget {
   }
 
   Future<void> _showAuditLog(BuildContext context, AppState state) async {
-    final entries = await state.admin.loadAudit();
-    if (!context.mounted) return;
+    // 監査ログは Firestore から取得するため、シート内で FutureBuilder を
+    // 使い、取得中はローディング、失敗時は再試行できるようにする。
     showModalBottomSheet(
       context: context,
       showDragHandle: true,
       isScrollControlled: true,
       builder: (ctx) {
-        return DraggableScrollableSheet(
-          expand: false,
-          initialChildSize: 0.6,
-          maxChildSize: 0.9,
-          builder: (ctx, controller) {
-            return Column(
-              children: [
-                const Padding(
-                  padding: EdgeInsets.all(16),
-                  child: Text('操作ログ（監査）',
-                      style: TextStyle(
-                          fontSize: 16, fontWeight: FontWeight.w700)),
-                ),
-                Expanded(
-                  child: entries.isEmpty
-                      ? const Center(child: Text('記録はまだありません'))
-                      : ListView.separated(
-                          controller: controller,
-                          itemCount: entries.length,
-                          separatorBuilder: (_, __) =>
-                              const Divider(height: 1),
-                          itemBuilder: (_, i) {
-                            final e = entries[i];
-                            return ListTile(
-                              dense: true,
-                              leading: Icon(_auditIcon(e.action), size: 20),
-                              title: Text(e.detail,
-                                  style: const TextStyle(fontSize: 13)),
-                              subtitle: Text(
-                                '${_fmtDateTime(e.at)}'
-                                '${e.adminName.isNotEmpty ? ' ・ ${e.adminName}' : ''}',
-                                style: const TextStyle(fontSize: 11),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-              ],
+        // 更新ボタンで再取得できるよう Future を差し替え可能にする。
+        Future<List<AuditEntry>> future = state.admin.loadAudit();
+        return StatefulBuilder(
+          builder: (ctx, setSheetState) {
+            return DraggableScrollableSheet(
+              expand: false,
+              initialChildSize: 0.6,
+              maxChildSize: 0.9,
+              builder: (ctx, controller) {
+                return Column(
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.fromLTRB(16, 16, 8, 8),
+                      child: Row(
+                        children: [
+                          const Expanded(
+                            child: Text('操作ログ（監査）',
+                                style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700)),
+                          ),
+                          IconButton(
+                            tooltip: '更新',
+                            icon: const Icon(Icons.refresh_rounded),
+                            onPressed: () => setSheetState(
+                                () => future = state.admin.loadAudit()),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Expanded(
+                      child: FutureBuilder<List<AuditEntry>>(
+                        future: future,
+                        builder: (ctx, snapshot) {
+                          if (snapshot.connectionState ==
+                              ConnectionState.waiting) {
+                            return const Center(
+                                child: CircularProgressIndicator());
+                          }
+                          final entries = snapshot.data ?? const <AuditEntry>[];
+                          if (entries.isEmpty) {
+                            return const Center(
+                                child: Text('記録はまだありません'));
+                          }
+                          return ListView.separated(
+                            controller: controller,
+                            itemCount: entries.length,
+                            separatorBuilder: (_, __) =>
+                                const Divider(height: 1),
+                            itemBuilder: (_, i) {
+                              final e = entries[i];
+                              return ListTile(
+                                dense: true,
+                                leading:
+                                    Icon(_auditIcon(e.action), size: 20),
+                                title: Text(e.detail,
+                                    style: const TextStyle(fontSize: 13)),
+                                subtitle: Text(
+                                  '${_fmtDateTime(e.at)}'
+                                  '${e.adminName.isNotEmpty ? ' ・ ${e.adminName}' : ''}',
+                                  style: const TextStyle(fontSize: 11),
+                                ),
+                              );
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ],
+                );
+              },
             );
           },
         );
