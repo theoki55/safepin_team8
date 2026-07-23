@@ -55,8 +55,10 @@ class SettingsScreen extends StatelessWidget {
                     leading: const Icon(Icons.checklist_rounded,
                         color: Colors.indigo),
                     title: const Text('複数選択して削除'),
-                    subtitle: const Text('ピンを選んでまとめて削除'),
-                    onTap: state.allPins.isEmpty
+                    subtitle: Text(state.isAdmin
+                        ? 'ピンを選んでまとめて削除（管理者：全投稿）'
+                        : '自分の投稿を選んでまとめて削除'),
+                    onTap: state.manageablePins.isEmpty
                         ? null
                         : () => _openMultiDelete(context),
                   ),
@@ -64,9 +66,13 @@ class SettingsScreen extends StatelessWidget {
                   ListTile(
                     leading: const Icon(Icons.delete_sweep_outlined,
                         color: Colors.redAccent),
-                    title: const Text('すべてのピンを削除'),
-                    subtitle: Text('現在 ${state.allPins.length} 件'),
-                    onTap: state.allPins.isEmpty
+                    title: Text(state.isAdmin
+                        ? 'すべてのピンを削除'
+                        : '自分の投稿をすべて削除'),
+                    subtitle: Text(state.isAdmin
+                        ? '全 ${state.allPins.length} 件が対象'
+                        : '削除できるのは自分の投稿 ${state.manageablePins.length} 件'),
+                    onTap: state.manageablePins.isEmpty
                         ? null
                         : () => _confirmClear(context, state),
                   ),
@@ -357,11 +363,19 @@ class SettingsScreen extends StatelessWidget {
   }
 
   void _confirmClear(BuildContext context, AppState state) {
+    // 削除対象は「自分が管理できるピン」のみ(管理者は全件)。
+    final targets = state.manageablePins;
+    final isAdmin = state.isAdmin;
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
-        title: const Text('すべてのピンを削除しますか？'),
-        content: Text('${state.allPins.length} 件すべてを削除します。この操作は取り消せません。'),
+        title: Text(isAdmin ? 'すべてのピンを削除しますか？' : '自分の投稿をすべて削除しますか？'),
+        content: Text(
+          isAdmin
+              ? '${targets.length} 件すべてを削除します。この操作は取り消せません。'
+              : '自分が投稿した ${targets.length} 件を削除します。'
+                  '他の人の投稿は削除されません。この操作は取り消せません。',
+        ),
         actions: [
           TextButton(
               onPressed: () => Navigator.pop(ctx),
@@ -369,7 +383,7 @@ class SettingsScreen extends StatelessWidget {
           FilledButton(
             style: FilledButton.styleFrom(backgroundColor: Colors.red),
             onPressed: () async {
-              final ids = state.allPins.map((e) => e.id).toList();
+              final ids = targets.map((e) => e.id).toList();
               Navigator.pop(ctx);
               final messenger = ScaffoldMessenger.of(context);
               final n = await state.deletePins(ids);

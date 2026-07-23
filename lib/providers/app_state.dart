@@ -50,6 +50,11 @@ class AppState extends ChangeNotifier {
   bool isStrictlyMine(Pin pin) =>
       pin.authorUid.isNotEmpty && pin.authorUid == currentUid;
 
+  /// 現在のユーザーが削除・編集できるピンの一覧(全モード)。
+  /// 一般利用者は自分の投稿(+投稿者不明の過去データ)、管理者は全件。
+  List<Pin> get manageablePins =>
+      _pins.where(canManage).toList();
+
   // ---- 管理者(自治会役員)モード ----
   bool _isAdmin = false;
   bool get isAdmin => _isAdmin;
@@ -330,9 +335,16 @@ class AppState extends ChangeNotifier {
   }
 
   /// 複数ピンを一括削除する。削除できた件数を返す。
+  /// 権限(自分の投稿 or 管理者)のないピンは安全のためスキップする。
   Future<int> deletePins(Iterable<String> ids) async {
     var deleted = 0;
     for (final id in ids) {
+      final pin = pinById(id);
+      // 権限チェック: 該当ピンが見つかり、かつ管理できる場合のみ削除。
+      if (pin != null && !canManage(pin)) {
+        if (kDebugMode) debugPrint('deletePins skipped (no permission): $id');
+        continue;
+      }
       try {
         await repository.delete(id);
         if (!_realtime) _pins.removeWhere((p) => p.id == id);

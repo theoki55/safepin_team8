@@ -21,8 +21,9 @@ class _MultiDeleteScreenState extends State<MultiDeleteScreen> {
   @override
   Widget build(BuildContext context) {
     final state = context.watch<AppState>();
-    // 全モードのピンを対象にする(削除は全件から選べるべき)
-    final pins = [...state.allPins]
+    // 削除できるのは「自分の投稿」または管理者のみ。
+    // 権限のないピンは一覧に表示しない(越権削除を防ぐ)。
+    final pins = [...state.allPins.where(state.canManage)]
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
     final allSelected = pins.isNotEmpty && _selected.length == pins.length;
@@ -50,9 +51,27 @@ class _MultiDeleteScreenState extends State<MultiDeleteScreen> {
         ],
       ),
       body: pins.isEmpty
-          ? const Center(
-              child: Text('削除できるピンがありません',
-                  style: TextStyle(color: Colors.black45)),
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(32),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const Icon(Icons.lock_outline_rounded,
+                        size: 40, color: Colors.black26),
+                    const SizedBox(height: 12),
+                    Text(
+                      state.isAdmin
+                          ? '削除できるピンがありません'
+                          : '削除できるのは自分が投稿したピンだけです。\n'
+                              '他の人の投稿は削除できません。',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Colors.black45, height: 1.5),
+                    ),
+                  ],
+                ),
+              ),
             )
           : ListView.separated(
               padding: const EdgeInsets.only(bottom: 90),
