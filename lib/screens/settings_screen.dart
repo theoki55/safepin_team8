@@ -8,6 +8,8 @@ import '../providers/app_state.dart';
 import '../services/pin_import_service.dart';
 import '../utils/constants.dart';
 import 'multi_delete_screen.dart';
+import 'resource_bulk_upload_screen.dart';
+import 'resource_form_screen.dart';
 
 /// 設定画面: モード切替・投稿者名・アプリ情報。
 class SettingsScreen extends StatelessWidget {
@@ -148,9 +150,40 @@ class SettingsScreen extends StatelessWidget {
             ListTile(
               leading: const Icon(Icons.verified_user_rounded,
                   color: Color(0xFF00897B)),
-              title: const Text('管理者モード：ON',
-                  style: TextStyle(fontWeight: FontWeight.w700)),
-              subtitle: const Text('すべての投稿の編集・削除・非表示解除ができます'),
+              title: Text(
+                  state.adminName2.isEmpty
+                      ? '管理者モード：ON'
+                      : '管理者モード：ON（${state.adminName2}）',
+                  style: const TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: Text(
+                  'すべての投稿の編集・削除・非表示解除ができます'
+                  '（${AppConstants.adminSessionMinutes}分で自動解除）'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.add_location_alt_rounded,
+                  color: Color(0xFF6A1B9A)),
+              title: const Text('地域資源を登録'),
+              subtitle: const Text('消火器・土のう・AED などを地図に追加'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _openResourceForm(context),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.upload_file_rounded,
+                  color: Color(0xFF6A1B9A)),
+              title: const Text('地域資源をCSV一括登録'),
+              subtitle: const Text('自治会の資源リストをまとめて取り込み'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _openResourceBulkUpload(context),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.history_rounded, color: Colors.blueGrey),
+              title: const Text('操作ログ（監査）'),
+              subtitle: const Text('資源の登録・削除などの記録を確認'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _showAuditLog(context, state),
             ),
             const Divider(height: 1),
             ListTile(
@@ -184,28 +217,41 @@ class SettingsScreen extends StatelessWidget {
   Future<void> _promptAdminPassphrase(
       BuildContext context, AppState state) async {
     final controller = TextEditingController();
+    final nameController =
+        TextEditingController(text: await state.admin.loadAdminName());
     var obscure = true;
+    if (!context.mounted) return;
     final ok = await showDialog<bool>(
       context: context,
       builder: (dialogContext) {
         return StatefulBuilder(
           builder: (context, setState) {
             return AlertDialog(
-              title: const Text('管理者の合言葉'),
+              title: const Text('管理者ログイン'),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   const Text(
-                    '自治会から共有された合言葉を入力してください。',
+                    '自治会から共有された合言葉を入力してください。'
+                    'お名前・自治会名は登録・操作の記録に使われます。',
                     style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: nameController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                      labelText: '役員名 / 自治会名(任意)',
+                      hintText: '例：下目黒4丁目自治会 山田',
+                      border: OutlineInputBorder(),
+                    ),
                   ),
                   const SizedBox(height: 12),
                   TextField(
                     controller: controller,
                     obscureText: obscure,
-                    autofocus: true,
                     decoration: InputDecoration(
-                      hintText: '合言葉',
+                      labelText: '合言葉',
                       border: const OutlineInputBorder(),
                       suffixIcon: IconButton(
                         icon: Icon(obscure
@@ -216,6 +262,11 @@ class SettingsScreen extends StatelessWidget {
                     ),
                     onSubmitted: (_) => Navigator.pop(dialogContext, true),
                   ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'ログイン後 ${AppConstants.adminSessionMinutes} 分で自動的に解除されます。',
+                    style: const TextStyle(fontSize: 11, color: Colors.grey),
+                  ),
                 ],
               ),
               actions: [
@@ -225,7 +276,7 @@ class SettingsScreen extends StatelessWidget {
                 ),
                 FilledButton(
                   onPressed: () => Navigator.pop(dialogContext, true),
-                  child: const Text('確認'),
+                  child: const Text('ログイン'),
                 ),
               ],
             );
@@ -234,7 +285,10 @@ class SettingsScreen extends StatelessWidget {
       },
     );
     if (ok != true) return;
-    final success = await state.tryEnableAdmin(controller.text);
+    final success = await state.tryEnableAdmin(
+      controller.text,
+      adminName: nameController.text,
+    );
     if (!context.mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
@@ -611,6 +665,117 @@ class SettingsScreen extends StatelessWidget {
     Navigator.of(context).push(
       MaterialPageRoute(builder: (_) => const MultiDeleteScreen()),
     );
+  }
+
+  // ---------------- 地域資源(RESOURCE) ----------------
+  Future<void> _openResourceForm(BuildContext context) async {
+    final state = context.read<AppState>();
+    // セッション期限切れなら弾く
+    await state.refreshAdminSession();
+    if (!context.mounted) return;
+    if (!state.isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('管理者セッションが切れました。再度ログインしてください。')),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ResourceFormScreen()),
+    );
+  }
+
+  Future<void> _openResourceBulkUpload(BuildContext context) async {
+    final state = context.read<AppState>();
+    // セッション期限切れなら弾く
+    await state.refreshAdminSession();
+    if (!context.mounted) return;
+    if (!state.isAdmin) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('管理者セッションが切れました。再度ログインしてください。')),
+      );
+      return;
+    }
+    await Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const ResourceBulkUploadScreen()),
+    );
+  }
+
+  Future<void> _showAuditLog(BuildContext context, AppState state) async {
+    final entries = await state.admin.loadAudit();
+    if (!context.mounted) return;
+    showModalBottomSheet(
+      context: context,
+      showDragHandle: true,
+      isScrollControlled: true,
+      builder: (ctx) {
+        return DraggableScrollableSheet(
+          expand: false,
+          initialChildSize: 0.6,
+          maxChildSize: 0.9,
+          builder: (ctx, controller) {
+            return Column(
+              children: [
+                const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Text('操作ログ（監査）',
+                      style: TextStyle(
+                          fontSize: 16, fontWeight: FontWeight.w700)),
+                ),
+                Expanded(
+                  child: entries.isEmpty
+                      ? const Center(child: Text('記録はまだありません'))
+                      : ListView.separated(
+                          controller: controller,
+                          itemCount: entries.length,
+                          separatorBuilder: (_, __) =>
+                              const Divider(height: 1),
+                          itemBuilder: (_, i) {
+                            final e = entries[i];
+                            return ListTile(
+                              dense: true,
+                              leading: Icon(_auditIcon(e.action), size: 20),
+                              title: Text(e.detail,
+                                  style: const TextStyle(fontSize: 13)),
+                              subtitle: Text(
+                                '${_fmtDateTime(e.at)}'
+                                '${e.adminName.isNotEmpty ? ' ・ ${e.adminName}' : ''}',
+                                style: const TextStyle(fontSize: 11),
+                              ),
+                            );
+                          },
+                        ),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  IconData _auditIcon(String action) {
+    switch (action) {
+      case 'admin_login':
+        return Icons.login_rounded;
+      case 'admin_logout':
+        return Icons.logout_rounded;
+      case 'resource_add':
+        return Icons.add_location_alt_rounded;
+      case 'resource_update':
+        return Icons.edit_location_alt_rounded;
+      case 'resource_delete':
+        return Icons.wrong_location_rounded;
+      case 'resource_bulk_upload':
+        return Icons.upload_file_rounded;
+      default:
+        return Icons.circle_rounded;
+    }
+  }
+
+  String _fmtDateTime(DateTime dt) {
+    String two(int n) => n.toString().padLeft(2, '0');
+    return '${dt.year}/${two(dt.month)}/${two(dt.day)} '
+        '${two(dt.hour)}:${two(dt.minute)}';
   }
 
   void _showProgress(BuildContext context, String message) {

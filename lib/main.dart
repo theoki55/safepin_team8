@@ -8,6 +8,7 @@ import 'providers/app_state.dart';
 import 'screens/home_screen.dart';
 import 'services/auth_service.dart';
 import 'services/firestore_pin_repository.dart';
+import 'services/firestore_resource_repository.dart';
 import 'services/settings_service.dart';
 import 'theme.dart';
 import 'utils/constants.dart';
@@ -30,10 +31,14 @@ void main() async {
     final repository = FirestorePinRepository();
     final settings = SettingsService();
 
+    // 地域資源(RESOURCE)の Firestore リポジトリ(`resources` コレクション)。
+    final resourceRepository = FirestoreResourceRepository();
+
     final appState = AppState(
       repository: repository,
       settings: settings,
       auth: authService,
+      resourceRepository: resourceRepository,
     );
     await appState.init();
 

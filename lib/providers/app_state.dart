@@ -4,8 +4,11 @@ import 'package:flutter/foundation.dart';
 
 import '../models/enums.dart';
 import '../models/pin.dart';
+import '../models/resource.dart';
+import '../services/admin_service.dart';
 import '../services/auth_service.dart';
 import '../services/pin_repository.dart';
+import '../services/resource_repository.dart';
 import '../services/settings_service.dart';
 import '../utils/constants.dart';
 
@@ -15,12 +18,18 @@ class AppState extends ChangeNotifier {
   final PinRepository repository;
   final SettingsService settings;
   final AuthService auth;
+  final AdminService admin;
+
+  /// 地域資源(RESOURCE)のリポジトリ。未指定なら資源機能は無効(空)扱い。
+  final ResourceRepository? resourceRepository;
 
   AppState({
     required this.repository,
     required this.settings,
     required this.auth,
-  });
+    this.resourceRepository,
+    AdminService? admin,
+  }) : admin = admin ?? AdminService();
 
   /// 端末ごとの匿名ID(未認証なら空文字)。
   String get currentUid => auth.uid ?? '';
@@ -56,23 +65,43 @@ class AppState extends ChangeNotifier {
       _pins.where(canManage).toList();
 
   // ---- 管理者(自治会役員)モード ----
+  // 認証・セッション・監査ログは AdminService に委譲する(案Y)。
   bool _isAdmin = false;
   bool get isAdmin => _isAdmin;
 
+  /// 現在ログイン中の管理者名(役員名/自治会名)。未設定なら空文字。
+  String _adminName = '';
+  String get adminName2 => _adminName;
+
   /// 合言葉を照合して管理者モードを有効にする。成功したら true。
-  Future<bool> tryEnableAdmin(String passphrase) async {
-    if (passphrase.trim() != AppConstants.adminPassphrase) return false;
+  /// [adminName] は登録する役員名/自治会名(任意)。
+  Future<bool> tryEnableAdmin(String passphrase, {String adminName = ''}) async {
+    final ok = await admin.login(passphrase, adminName);
+    if (!ok) return false;
     _isAdmin = true;
-    await settings.saveIsAdmin(true);
+    _adminName = adminName.trim();
     notifyListeners();
     return true;
   }
 
   /// 管理者モードを解除する。
   Future<void> disableAdmin() async {
+    await admin.logout();
     _isAdmin = false;
-    await settings.saveIsAdmin(false);
+    _adminName = '';
     notifyListeners();
+  }
+
+  /// セッション期限切れを検査し、失効していれば権限を落とす。
+  /// 画面表示や管理操作の直前に呼ぶ。
+  Future<void> refreshAdminSession() async {
+    if (!_isAdmin) return;
+    final active = await admin.isActive();
+    if (!active) {
+      _isAdmin = false;
+      _adminName = '';
+      notifyListeners();
+    }
   }
 
   // ---- データ ----
@@ -84,6 +113,95 @@ class AppState extends ChangeNotifier {
   StreamSubscription<List<Pin>>? _pinsSub;
   bool _realtime = false;
   bool get realtime => _realtime;
+
+  // ---- 地域資源(RESOURCE) ----
+  List<Resource> _resources = [];
+  StreamSubscription<List<Resource>>? _resourcesSub;
+
+  /// 全資源(登録順・新しい順)。
+  List<Resource> get allResources => List.unmodifiable(_resources);
+
+  /// 地図に資源レイヤーを表示するか(フィルタ)。既定は表示。
+  bool _showResources = true;
+  bool get showResources => _showResources;
+
+  void toggleShowResources() {
+    _showResources = !_showResources;
+    notifyListeners();
+  }
+
+  void setShowResources(bool value) {
+    if (_showResources == value) return;
+    _showResources = value;
+    notifyListeners();
+  }
+
+  /// 地図/一覧に出す資源(フィルタ適用後)。
+  List<Resource> get visibleResources =>
+      _showResources ? _resources : const [];
+
+  /// 資源を1件登録する(管理者操作)。監査ログにも記録する。
+  Future<void> addResource(Resource resource) async {
+    final repo = resourceRepository;
+    if (repo == null) return;
+    await repo.add(resource);
+    if (!_resourcesRealtime) {
+      _resources.insert(0, resource);
+      notifyListeners();
+    }
+    await admin.logAction(
+      'resource_add',
+      '${resource.category.label}「${resource.name}」を登録',
+    );
+  }
+
+  /// 資源を更新する(管理者操作)。
+  Future<void> updateResource(Resource resource) async {
+    final repo = resourceRepository;
+    if (repo == null) return;
+    await repo.update(resource);
+    if (!_resourcesRealtime) {
+      final i = _resources.indexWhere((r) => r.id == resource.id);
+      if (i >= 0) _resources[i] = resource;
+      notifyListeners();
+    }
+    await admin.logAction(
+      'resource_update',
+      '${resource.category.label}「${resource.name}」を更新',
+    );
+  }
+
+  /// 資源を削除する(管理者操作)。
+  Future<void> deleteResource(String id) async {
+    final repo = resourceRepository;
+    if (repo == null) return;
+    final target = _resources.where((r) => r.id == id).toList();
+    await repo.delete(id);
+    if (!_resourcesRealtime) {
+      _resources.removeWhere((r) => r.id == id);
+      notifyListeners();
+    }
+    final name = target.isNotEmpty ? target.first.name : id;
+    await admin.logAction('resource_delete', '資源「$name」を削除');
+  }
+
+  /// CSV 一括アップロードで複数件を登録する(管理者操作)。成功件数を返す。
+  Future<int> addResources(List<Resource> resources) async {
+    final repo = resourceRepository;
+    if (repo == null || resources.isEmpty) return 0;
+    final saved = await repo.addMany(resources);
+    if (!_resourcesRealtime) {
+      _resources.insertAll(0, resources);
+      notifyListeners();
+    }
+    await admin.logAction(
+      'resource_bulk_upload',
+      'CSV一括アップロード $saved 件を登録',
+    );
+    return saved;
+  }
+
+  bool _resourcesRealtime = false;
 
   // ---- 設定 ----
   AppMode _mode = AppMode.normal;
@@ -124,7 +242,9 @@ class AppState extends ChangeNotifier {
     await repository.init();
     _mode = await settings.loadMode();
     _authorName = await settings.loadAuthorName();
-    _isAdmin = await settings.loadIsAdmin();
+    // 管理者セッションは有効期限つき。期限切れなら自動的に無効。
+    _isAdmin = await admin.isActive();
+    _adminName = _isAdmin ? await admin.loadAdminName() : '';
     // 起動時、現在のモードに応じた推奨フィルタを適用する。
     _applyRecommendedFilter(_mode);
 
@@ -169,11 +289,44 @@ class AppState extends ChangeNotifier {
       _loading = false;
       notifyListeners();
     }
+
+    // 地域資源(RESOURCE)の初期化(リポジトリが設定されている場合のみ)。
+    await _initResources();
+  }
+
+  /// 資源リポジトリを初期化し、可能ならリアルタイム購読を開始する。
+  /// 失敗しても本体(ピン)機能を止めないよう例外は握りつぶす。
+  Future<void> _initResources() async {
+    final repo = resourceRepository;
+    if (repo == null) return;
+    try {
+      await repo.init();
+      final stream = repo.watch();
+      if (stream != null) {
+        _resourcesRealtime = true;
+        _resourcesSub = stream.listen(
+          (list) {
+            _resources = list;
+            notifyListeners();
+          },
+          onError: (Object e, StackTrace st) {
+            if (kDebugMode) debugPrint('AppState resource watch error: $e');
+          },
+        );
+      } else {
+        _resourcesRealtime = false;
+        _resources = await repo.getAll();
+        notifyListeners();
+      }
+    } catch (e) {
+      if (kDebugMode) debugPrint('resource init failed (ignored): $e');
+    }
   }
 
   @override
   void dispose() {
     _pinsSub?.cancel();
+    _resourcesSub?.cancel();
     super.dispose();
   }
 

@@ -7,12 +7,15 @@ import '../models/enums.dart';
 import '../providers/app_state.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
+import '../models/resource_category.dart';
 import '../utils/location_blur.dart';
 import '../utils/service_area_data.dart';
 import '../widgets/pin_marker.dart';
+import '../widgets/resource_marker.dart';
 import 'filter_sheet.dart';
 import 'pin_detail_sheet.dart';
 import 'post_pin_screen.dart';
+import 'resource_detail_sheet.dart';
 
 /// メインの地図画面。ピンの表示・投稿・詳細表示の起点。
 class MapScreen extends StatefulWidget {
@@ -86,6 +89,7 @@ class _MapScreenState extends State<MapScreen> {
     return Consumer<AppState>(
       builder: (context, state, _) {
         final pins = state.filteredPins;
+        final resources = state.visibleResources;
         return Stack(
           children: [
             FlutterMap(
@@ -149,6 +153,22 @@ class _MapScreenState extends State<MapScreen> {
                     );
                   }).toList(),
                 ),
+                // 地域資源(RESOURCE): 恒久設備。正確な位置で角丸バッジ表示。
+                MarkerLayer(
+                  markers: resources.map((r) {
+                    return Marker(
+                      point: LatLng(r.lat, r.lng),
+                      width: 40,
+                      height: 44,
+                      alignment: Alignment.center,
+                      child: GestureDetector(
+                        onTap: () =>
+                            ResourceDetailSheet.show(context, r.id),
+                        child: ResourceMarker(resource: r),
+                      ),
+                    );
+                  }).toList(),
+                ),
                 // OSM 帰属表示(利用規約)
                 const RichAttributionWidget(
                   attributions: [
@@ -203,6 +223,12 @@ class _MapScreenState extends State<MapScreen> {
                   _FilterButton(
                     active: state.isFiltered,
                     onTap: () => FilterSheet.show(context),
+                  ),
+                  const SizedBox(height: 10),
+                  _ResourceToggle(
+                    active: state.showResources,
+                    count: state.allResources.length,
+                    onTap: () => state.toggleShowResources(),
                   ),
                   const SizedBox(height: 10),
                   const _Legend(),
@@ -384,26 +410,86 @@ class _Legend extends StatelessWidget {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
-        children: PinType.values.map((t) {
-          return Padding(
-            padding: const EdgeInsets.symmetric(vertical: 1.5),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 11,
-                  height: 11,
-                  decoration:
-                      BoxDecoration(color: t.color, shape: BoxShape.circle),
+        children: [
+          ...PinType.values.map((t) {
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 1.5),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 11,
+                    height: 11,
+                    decoration:
+                        BoxDecoration(color: t.color, shape: BoxShape.circle),
+                  ),
+                  const SizedBox(width: 6),
+                  Text(t.shortLabel,
+                      style: const TextStyle(
+                          fontSize: 11, fontWeight: FontWeight.w600)),
+                ],
+              ),
+            );
+          }),
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 3),
+            child: Divider(height: 1),
+          ),
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Container(
+                width: 11,
+                height: 11,
+                decoration: BoxDecoration(
+                  color: ResourceCategory.themeColor,
+                  borderRadius: BorderRadius.circular(3),
                 ),
-                const SizedBox(width: 6),
-                Text(t.shortLabel,
-                    style: const TextStyle(
-                        fontSize: 11, fontWeight: FontWeight.w600)),
-              ],
-            ),
-          );
-        }).toList(),
+              ),
+              const SizedBox(width: 6),
+              const Text('地域資源',
+                  style: TextStyle(fontSize: 11, fontWeight: FontWeight.w600)),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// 地域資源(RESOURCE)レイヤーの表示ON/OFFトグル。
+class _ResourceToggle extends StatelessWidget {
+  final bool active;
+  final int count;
+  final VoidCallback onTap;
+  const _ResourceToggle(
+      {required this.active, required this.count, required this.onTap});
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: active ? ResourceCategory.themeColor : Colors.white,
+      borderRadius: BorderRadius.circular(24),
+      elevation: 3,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(24),
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(active ? Icons.layers_rounded : Icons.layers_clear_rounded,
+                  size: 18, color: active ? Colors.white : Colors.black87),
+              const SizedBox(width: 6),
+              Text('資源 $count',
+                  style: TextStyle(
+                      fontSize: 13,
+                      fontWeight: FontWeight.w700,
+                      color: active ? Colors.white : Colors.black87)),
+            ],
+          ),
+        ),
       ),
     );
   }

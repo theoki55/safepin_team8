@@ -16,9 +16,21 @@ class AppConstants {
 
   // ---- ステップB: コミュニティ運用の定数 ----
 
-  /// 管理者(自治会役員)モードを有効にする合言葉。
-  /// パイロットでは運用者にのみ口頭/紙で共有する。
-  static const String adminPassphrase = 'safepin-team8-2026';
+  /// 管理者(自治会役員)モードを有効にする合言葉の SHA-256 ハッシュ。
+  ///
+  /// 平文をソースに埋め込まないことで、ビルド成果物から合言葉が
+  /// そのまま漏れることを防ぐ。照合時は入力を同じくハッシュ化して比較する。
+  /// (元の合言葉はパイロット運用者にのみ口頭/紙で共有する。)
+  static const String adminPassphraseHash =
+      'fd25baf95c40a8e646d1b1e6471c1b7b26e57853d4e79cb75b2511d7cac7b585';
+
+  /// 管理者セッションの有効時間(分)。
+  /// この時間を過ぎると管理者モードは自動的に解除され、再度合言葉が必要になる。
+  /// 共有端末での「管理者モードの付けっぱなし」による誤操作/権限漏れを防ぐ。
+  static const int adminSessionMinutes = 60;
+
+  /// 監査ログとして保持する最大件数(端末ローカル / shared_preferences)。
+  static const int adminAuditMaxEntries = 200;
 
   /// この件数以上の通報で投稿を自動的に非表示にする。
   static const int reportHideThreshold = 3;
