@@ -74,6 +74,10 @@ class SettingsScreen extends StatelessWidget {
               ),
             ),
             const SizedBox(height: 24),
+            _sectionTitle('管理者（自治会役員）'),
+            const SizedBox(height: 8),
+            _adminCard(context, state),
+            const SizedBox(height: 24),
             _sectionTitle('このアプリについて'),
             const SizedBox(height: 8),
             Card(
@@ -129,6 +133,110 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _sectionTitle(String text) => Text(text,
       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black54));
+
+  Widget _adminCard(BuildContext context, AppState state) {
+    if (state.isAdmin) {
+      return Card(
+        child: Column(
+          children: [
+            ListTile(
+              leading: const Icon(Icons.verified_user_rounded,
+                  color: Color(0xFF00897B)),
+              title: const Text('管理者モード：ON',
+                  style: TextStyle(fontWeight: FontWeight.w700)),
+              subtitle: const Text('すべての投稿の編集・削除・非表示解除ができます'),
+            ),
+            const Divider(height: 1),
+            ListTile(
+              leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
+              title: const Text('管理者モードを解除'),
+              onTap: () async {
+                await state.disableAdmin();
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('管理者モードを解除しました')),
+                  );
+                }
+              },
+            ),
+          ],
+        ),
+      );
+    }
+    return Card(
+      child: ListTile(
+        leading:
+            const Icon(Icons.admin_panel_settings_outlined, color: Colors.indigo),
+        title: const Text('管理者モードにする'),
+        subtitle: const Text('合言葉を入力すると、投稿の管理ができるようになります'),
+        trailing: const Icon(Icons.chevron_right_rounded),
+        onTap: () => _promptAdminPassphrase(context, state),
+      ),
+    );
+  }
+
+  Future<void> _promptAdminPassphrase(
+      BuildContext context, AppState state) async {
+    final controller = TextEditingController();
+    var obscure = true;
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('管理者の合言葉'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Text(
+                    '自治会から共有された合言葉を入力してください。',
+                    style: TextStyle(fontSize: 13),
+                  ),
+                  const SizedBox(height: 12),
+                  TextField(
+                    controller: controller,
+                    obscureText: obscure,
+                    autofocus: true,
+                    decoration: InputDecoration(
+                      hintText: '合言葉',
+                      border: const OutlineInputBorder(),
+                      suffixIcon: IconButton(
+                        icon: Icon(obscure
+                            ? Icons.visibility_off_outlined
+                            : Icons.visibility_outlined),
+                        onPressed: () => setState(() => obscure = !obscure),
+                      ),
+                    ),
+                    onSubmitted: (_) => Navigator.pop(dialogContext, true),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('キャンセル'),
+                ),
+                FilledButton(
+                  onPressed: () => Navigator.pop(dialogContext, true),
+                  child: const Text('確認'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+    if (ok != true) return;
+    final success = await state.tryEnableAdmin(controller.text);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(success ? '管理者モードを有効にしました' : '合言葉が正しくありません'),
+        backgroundColor: success ? const Color(0xFF00897B) : Colors.redAccent,
+      ),
+    );
+  }
 
   Widget _modeCard(BuildContext context, AppState state) {
     return Card(

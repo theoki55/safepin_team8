@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../models/enums.dart';
 import '../models/pin.dart';
 import '../providers/app_state.dart';
+import '../utils/constants.dart';
 import '../utils/format.dart';
 import '../utils/location_blur.dart';
 import '../widgets/attachment_view.dart';
@@ -59,7 +60,7 @@ class _DetailBody extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
-    final mine = state.isMine(pin);
+    final canManage = state.canManage(pin);
     return Column(
       children: [
         const SizedBox(height: 10),
@@ -82,8 +83,8 @@ class _DetailBody extends StatelessWidget {
                   const SizedBox(width: 8),
                   PriorityChip(priority: pin.priority),
                   const Spacer(),
-                  // 削除は自分の投稿(匿名IDが一致)のみ可能。
-                  if (mine)
+                  // 削除は自分の投稿、または管理者のみ可能。
+                  if (canManage)
                     PopupMenuButton<String>(
                       onSelected: (v) {
                         if (v == 'delete') _confirmDelete(context, pin);
@@ -127,6 +128,16 @@ class _DetailBody extends StatelessWidget {
                           const TextStyle(color: Colors.black54, fontSize: 13)),
                 ],
               ),
+              // 管理者向け: 通報で非表示になった投稿の警告と解除ボタン。
+              if (pin.hiddenByReports && state.isAdmin) ...[
+                const SizedBox(height: 14),
+                _hiddenBanner(context, state, pin),
+              ],
+              // 「古い可能性」の注意表示。
+              if (state.isPossiblyOutdated(pin)) ...[
+                const SizedBox(height: 14),
+                _outdatedBanner(),
+              ],
               if (pin.comment.isNotEmpty) ...[
                 const SizedBox(height: 16),
                 Container(
@@ -160,10 +171,150 @@ class _DetailBody extends StatelessWidget {
               ),
               const SizedBox(height: 8),
               _locationBox(pin),
+              const SizedBox(height: 22),
+              _sectionLabel(Icons.groups_2_rounded, 'みんなの反応'),
+              const SizedBox(height: 10),
+              _ReactionBar(pin: pin),
+              const SizedBox(height: 18),
+              _reportRow(context, state, pin),
             ],
           ),
         ),
       ],
+    );
+  }
+
+  /// 通報行(自分の投稿以外に表示)。
+  Widget _reportRow(BuildContext context, AppState state, Pin pin) {
+    // 確実に自分の投稿だけは通報対象にしない。
+    // (authorUid が空の過去データは投稿者不明なので通報可能)
+    if (state.isStrictlyMine(pin)) {
+      return const SizedBox.shrink();
+    }
+    final reported = state.hasReported(pin);
+    return Align(
+      alignment: Alignment.centerLeft,
+      child: TextButton.icon(
+        onPressed: reported
+            ? null
+            : () async {
+                await _confirmReport(context, state, pin);
+              },
+        icon: Icon(
+          reported ? Icons.flag_rounded : Icons.outlined_flag_rounded,
+          size: 18,
+          color: reported ? Colors.grey : Colors.redAccent,
+        ),
+        label: Text(
+          reported ? '通報済み' : 'この投稿を通報',
+          style: TextStyle(
+            fontSize: 13,
+            color: reported ? Colors.grey : Colors.redAccent,
+          ),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmReport(
+      BuildContext context, AppState state, Pin pin) async {
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('この投稿を通報しますか？'),
+        content: Text(
+          '不適切・虚偽・迷惑な内容の場合に通報してください。'
+          '${AppConstants.reportHideThreshold}件の通報が集まると自動的に非表示になります。',
+          style: const TextStyle(fontSize: 13, height: 1.5),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            style: FilledButton.styleFrom(backgroundColor: Colors.redAccent),
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('通報する'),
+          ),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await state.reportPin(pin);
+    if (!context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('通報しました。ご協力ありがとうございます。')),
+    );
+  }
+
+  Widget _hiddenBanner(BuildContext context, AppState state, Pin pin) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.red.withValues(alpha: 0.08),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.red.withValues(alpha: 0.3)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              const Icon(Icons.visibility_off_rounded,
+                  size: 18, color: Colors.red),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  '通報が${state.reportCount(pin)}件集まり、一般には非表示になっています（管理者のみ表示）。',
+                  style: const TextStyle(fontSize: 12.5, height: 1.4),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: OutlinedButton.icon(
+              onPressed: () async {
+                await state.unhidePin(pin);
+                if (context.mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('非表示を解除しました')),
+                  );
+                }
+              },
+              icon: const Icon(Icons.restore_rounded, size: 16),
+              label: const Text('非表示を解除'),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _outdatedBanner() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.withValues(alpha: 0.15),
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: Colors.amber.withValues(alpha: 0.5)),
+      ),
+      child: Row(
+        children: const [
+          Icon(Icons.warning_amber_rounded, size: 18, color: Colors.orange),
+          SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '複数の人が「古い情報」と反応しています。最新の状況をご確認ください。',
+              style: TextStyle(fontSize: 12.5, height: 1.4),
+            ),
+          ),
+        ],
+      ),
     );
   }
 
@@ -268,8 +419,8 @@ class _StatusStepper extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final state = context.read<AppState>();
-    // ステータス変更は自分の投稿(匿名IDが一致)のみ可能。
-    final canEdit = state.isMine(pin);
+    // ステータス変更は自分の投稿、または管理者のみ可能。
+    final canEdit = state.canManage(pin);
     // 種別ごとの選択可能なステータス一覧(順序どおり)
     final statuses = pin.type.availableStatuses;
     // 現在ステータスの、この一覧内での位置(見つからなければ0)
@@ -354,7 +505,7 @@ class _StatusStepper extends StatelessWidget {
               SizedBox(width: 5),
               Expanded(
                 child: Text(
-                  'ステータスの変更・削除は、この投稿をした端末からのみ行えます。',
+                  'ステータスの変更・削除は、この投稿をした端末または管理者のみ行えます。',
                   style: TextStyle(fontSize: 11.5, color: Colors.black45),
                 ),
               ),
@@ -362,6 +513,122 @@ class _StatusStepper extends StatelessWidget {
           ),
         ],
       ],
+    );
+  }
+}
+
+/// 住民が押せる信頼度シグナルのボタン群。
+/// 現地確認済 / 役に立った / 古い情報 をトグルする。
+class _ReactionBar extends StatelessWidget {
+  final Pin pin;
+  const _ReactionBar({required this.pin});
+
+  @override
+  Widget build(BuildContext context) {
+    final state = context.read<AppState>();
+    return Wrap(
+      spacing: 8,
+      runSpacing: 8,
+      children: [
+        _ReactionChip(
+          icon: Icons.visibility_rounded,
+          label: '現地確認済',
+          count: pin.confirmedBy.length,
+          active: state.hasConfirmed(pin),
+          color: const Color(0xFFFB8C00),
+          onTap: () => state.toggleConfirm(pin),
+        ),
+        _ReactionChip(
+          icon: Icons.thumb_up_alt_rounded,
+          label: '役に立った',
+          count: pin.helpfulBy.length,
+          active: state.hasHelpful(pin),
+          color: const Color(0xFF2E7D32),
+          onTap: () => state.toggleHelpful(pin),
+        ),
+        _ReactionChip(
+          icon: Icons.history_toggle_off_rounded,
+          label: '古い情報',
+          count: pin.outdatedBy.length,
+          active: state.hasOutdated(pin),
+          color: const Color(0xFF8D6E63),
+          onTap: () => state.toggleOutdated(pin),
+        ),
+      ],
+    );
+  }
+}
+
+class _ReactionChip extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final int count;
+  final bool active;
+  final Color color;
+  final VoidCallback onTap;
+
+  const _ReactionChip({
+    required this.icon,
+    required this.label,
+    required this.count,
+    required this.active,
+    required this.color,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      borderRadius: BorderRadius.circular(20),
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        decoration: BoxDecoration(
+          color: active ? color.withValues(alpha: 0.14) : Colors.white,
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(
+            color: active
+                ? color.withValues(alpha: 0.7)
+                : Colors.black.withValues(alpha: 0.12),
+            width: active ? 1.4 : 1,
+          ),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(icon,
+                size: 16,
+                color: active ? color : Colors.black45),
+            const SizedBox(width: 6),
+            Text(
+              label,
+              style: TextStyle(
+                fontSize: 12.5,
+                fontWeight: FontWeight.w700,
+                color: active ? color : Colors.black54,
+              ),
+            ),
+            if (count > 0) ...[
+              const SizedBox(width: 6),
+              Container(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                decoration: BoxDecoration(
+                  color: active ? color : Colors.black26,
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Text(
+                  '$count',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                      color: Colors.white),
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 }

@@ -6,6 +6,7 @@ import '../models/enums.dart';
 class SettingsService {
   static const _kMode = 'app_mode';
   static const _kAuthor = 'author_name';
+  static const _kAdmin = 'is_admin';
 
   Future<AppMode> loadMode() async {
     final prefs = await SharedPreferences.getInstance();
@@ -25,5 +26,16 @@ class SettingsService {
   Future<void> saveAuthorName(String name) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString(_kAuthor, name);
+  }
+
+  /// 管理者(自治会役員)モードが有効か。
+  Future<bool> loadIsAdmin() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getBool(_kAdmin) ?? false;
+  }
+
+  Future<void> saveIsAdmin(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_kAdmin, value);
   }
 }

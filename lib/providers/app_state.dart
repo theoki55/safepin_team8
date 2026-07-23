@@ -7,6 +7,7 @@ import '../models/pin.dart';
 import '../services/auth_service.dart';
 import '../services/pin_repository.dart';
 import '../services/settings_service.dart';
+import '../utils/constants.dart';
 
 /// アプリ全体の状態管理。
 /// ピン一覧、フィルタ、モード、投稿者名を保持する。
@@ -38,6 +39,35 @@ class AppState extends ChangeNotifier {
   bool isMine(Pin pin) {
     if (pin.authorUid.isEmpty) return true;
     return pin.authorUid == currentUid;
+  }
+
+  /// このピンを編集/削除できるか。
+  /// 管理者(自治会役員)はすべての投稿を、一般利用者は自分の投稿のみ操作可。
+  bool canManage(Pin pin) => _isAdmin || isMine(pin);
+
+  /// 「確実に自分の投稿」か。authorUid が空のピン(投稿者不明の過去データ)は
+  /// 自分の投稿とはみなさない。通報ボタンの表示制御などに使う。
+  bool isStrictlyMine(Pin pin) =>
+      pin.authorUid.isNotEmpty && pin.authorUid == currentUid;
+
+  // ---- 管理者(自治会役員)モード ----
+  bool _isAdmin = false;
+  bool get isAdmin => _isAdmin;
+
+  /// 合言葉を照合して管理者モードを有効にする。成功したら true。
+  Future<bool> tryEnableAdmin(String passphrase) async {
+    if (passphrase.trim() != AppConstants.adminPassphrase) return false;
+    _isAdmin = true;
+    await settings.saveIsAdmin(true);
+    notifyListeners();
+    return true;
+  }
+
+  /// 管理者モードを解除する。
+  Future<void> disableAdmin() async {
+    _isAdmin = false;
+    await settings.saveIsAdmin(false);
+    notifyListeners();
   }
 
   // ---- データ ----
@@ -89,6 +119,7 @@ class AppState extends ChangeNotifier {
     await repository.init();
     _mode = await settings.loadMode();
     _authorName = await settings.loadAuthorName();
+    _isAdmin = await settings.loadIsAdmin();
     // 起動時、現在のモードに応じた推奨フィルタを適用する。
     _applyRecommendedFilter(_mode);
 
@@ -146,6 +177,8 @@ class AppState extends ChangeNotifier {
 
   List<Pin> get filteredPins {
     return _pins.where((p) {
+      // 通報で非表示になった投稿は一般利用者には見せない(管理者には薄く表示)。
+      if (p.hiddenByReports && !_isAdmin) return false;
       // モード別絞り込み: 「全モード表示」でなければ現在のモードのピンのみ
       if (!_showAllModes && p.mode != _mode) return false;
       if (!_typeFilter.contains(p.type)) return false;
@@ -196,6 +229,96 @@ class AppState extends ChangeNotifier {
 
   Future<void> updateStatus(Pin pin, PinStatus status) async {
     await updatePin(pin.copyWith(status: status, updatedAt: DateTime.now()));
+  }
+
+  // ---- ステップB: 通報 ----
+
+  /// 自分がこの投稿を通報済みか。
+  bool hasReported(Pin pin) => pin.reportedBy.contains(currentUid);
+
+  /// 通報件数(自動非表示の判定に使う)。
+  int reportCount(Pin pin) => pin.reportedBy.length;
+
+  /// この投稿を通報する。既に通報済みなら何もしない。
+  /// 通報件数が閾値に達したら自動的に非表示にする。
+  Future<void> reportPin(Pin pin) async {
+    await ensureSignedIn();
+    final uid = currentUid;
+    if (uid.isEmpty || pin.reportedBy.contains(uid)) return;
+    final updated = List<String>.from(pin.reportedBy)..add(uid);
+    final hide =
+        updated.length >= AppConstants.reportHideThreshold || pin.hiddenByReports;
+    await updatePin(pin.copyWith(
+      reportedBy: updated,
+      hiddenByReports: hide,
+      updatedAt: DateTime.now(),
+    ));
+  }
+
+  /// 管理者が非表示を解除する(通報リセット)。
+  Future<void> unhidePin(Pin pin) async {
+    if (!_isAdmin) return;
+    await updatePin(pin.copyWith(
+      reportedBy: const [],
+      hiddenByReports: false,
+      updatedAt: DateTime.now(),
+    ));
+  }
+
+  // ---- ステップB: 信頼度シグナル ----
+
+  bool hasConfirmed(Pin pin) => pin.confirmedBy.contains(currentUid);
+  bool hasHelpful(Pin pin) => pin.helpfulBy.contains(currentUid);
+  bool hasOutdated(Pin pin) => pin.outdatedBy.contains(currentUid);
+
+  /// 「古い可能性」の注意表示を出すべきか。
+  bool isPossiblyOutdated(Pin pin) =>
+      pin.outdatedBy.length > pin.helpfulBy.length &&
+      pin.outdatedBy.length >= AppConstants.outdatedWarnThreshold;
+
+  /// 「現地確認済」をトグルする。一定人数が押したら未確認→現地確認済に自動昇格。
+  Future<void> toggleConfirm(Pin pin) async {
+    await ensureSignedIn();
+    final uid = currentUid;
+    if (uid.isEmpty) return;
+    final list = List<String>.from(pin.confirmedBy);
+    if (list.contains(uid)) {
+      list.remove(uid);
+    } else {
+      list.add(uid);
+    }
+    // 未確認の投稿で規定人数に達したら現地確認済へ引き上げる。
+    var newStatus = pin.status;
+    if (pin.status == PinStatus.unconfirmed &&
+        list.length >= AppConstants.confirmAutoThreshold &&
+        pin.type.supportsStatus(PinStatus.confirmed)) {
+      newStatus = PinStatus.confirmed;
+    }
+    await updatePin(pin.copyWith(
+      confirmedBy: list,
+      status: newStatus,
+      updatedAt: DateTime.now(),
+    ));
+  }
+
+  /// 「役に立った」をトグルする。
+  Future<void> toggleHelpful(Pin pin) async {
+    await ensureSignedIn();
+    final uid = currentUid;
+    if (uid.isEmpty) return;
+    final list = List<String>.from(pin.helpfulBy);
+    list.contains(uid) ? list.remove(uid) : list.add(uid);
+    await updatePin(pin.copyWith(helpfulBy: list, updatedAt: DateTime.now()));
+  }
+
+  /// 「古い情報」をトグルする。
+  Future<void> toggleOutdated(Pin pin) async {
+    await ensureSignedIn();
+    final uid = currentUid;
+    if (uid.isEmpty) return;
+    final list = List<String>.from(pin.outdatedBy);
+    list.contains(uid) ? list.remove(uid) : list.add(uid);
+    await updatePin(pin.copyWith(outdatedBy: list, updatedAt: DateTime.now()));
   }
 
   Future<void> deletePin(String id) async {

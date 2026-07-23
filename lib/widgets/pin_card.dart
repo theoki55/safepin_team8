@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../models/pin.dart';
+import '../utils/constants.dart';
 import '../utils/format.dart';
 import 'badges.dart';
 
@@ -9,6 +10,32 @@ class PinCard extends StatelessWidget {
   final Pin pin;
   final VoidCallback onTap;
   const PinCard({super.key, required this.pin, required this.onTap});
+
+  /// 「古い情報」が「役に立った」を上回り、規定件数を超えているか。
+  bool get _possiblyOutdated =>
+      pin.outdatedBy.length > pin.helpfulBy.length &&
+      pin.outdatedBy.length >= AppConstants.outdatedWarnThreshold;
+
+  Widget _outdatedBadge() => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+        decoration: BoxDecoration(
+          color: Colors.amber.withValues(alpha: 0.2),
+          borderRadius: BorderRadius.circular(8),
+          border: Border.all(color: Colors.amber.withValues(alpha: 0.6)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: const [
+            Icon(Icons.warning_amber_rounded, size: 12, color: Colors.orange),
+            SizedBox(width: 2),
+            Text('古い可能性',
+                style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: Color(0xFFB26A00))),
+          ],
+        ),
+      );
 
   @override
   Widget build(BuildContext context) {
@@ -27,6 +54,10 @@ class PinCard extends StatelessWidget {
                   TypeBadge(type: pin.type, compact: true),
                   const SizedBox(width: 6),
                   PriorityChip(priority: pin.priority),
+                  if (_possiblyOutdated) ...[
+                    const SizedBox(width: 6),
+                    _outdatedBadge(),
+                  ],
                   const Spacer(),
                   Text(
                     relativeTime(pin.createdAt),

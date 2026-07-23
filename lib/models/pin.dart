@@ -17,15 +17,32 @@ class Pin {
   /// 投稿者名(任意入力、匿名可)
   final String authorName;
 
-  /// 投稿者の匿名ID(Firebase Anonymous Auth の uid)。
+  /// 投稿者の匿名ID(端末ごとに発行する自前 UUID。shared_preferences に保存)。
   /// 自分の投稿だけを編集/削除できるようにするための識別子。
-  /// 過去データや認証失敗時は空文字。
+  /// 過去データや発行前は空文字。
   final String authorUid;
 
   /// 平時 / 災害 どちらのモードで投稿されたか
   final AppMode mode;
 
   final List<Attachment> attachments;
+
+  // ---- ステップB: コミュニティ運用フィールド ----
+
+  /// この投稿を通報した端末UIDの一覧(重複通報防止 & 件数カウント)。
+  final List<String> reportedBy;
+
+  /// 通報が閾値に達して自動的に非表示になったか。
+  final bool hiddenByReports;
+
+  /// 「現地確認済」を押した端末UIDの一覧。
+  final List<String> confirmedBy;
+
+  /// 「役に立った」を押した端末UIDの一覧。
+  final List<String> helpfulBy;
+
+  /// 「古い情報」を押した端末UIDの一覧。
+  final List<String> outdatedBy;
 
   final DateTime createdAt;
   final DateTime updatedAt;
@@ -43,6 +60,11 @@ class Pin {
     this.authorUid = '',
     required this.mode,
     required this.attachments,
+    this.reportedBy = const [],
+    this.hiddenByReports = false,
+    this.confirmedBy = const [],
+    this.helpfulBy = const [],
+    this.outdatedBy = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -59,6 +81,11 @@ class Pin {
     String? authorUid,
     AppMode? mode,
     List<Attachment>? attachments,
+    List<String>? reportedBy,
+    bool? hiddenByReports,
+    List<String>? confirmedBy,
+    List<String>? helpfulBy,
+    List<String>? outdatedBy,
     DateTime? updatedAt,
   }) {
     return Pin(
@@ -74,6 +101,11 @@ class Pin {
       authorUid: authorUid ?? this.authorUid,
       mode: mode ?? this.mode,
       attachments: attachments ?? this.attachments,
+      reportedBy: reportedBy ?? this.reportedBy,
+      hiddenByReports: hiddenByReports ?? this.hiddenByReports,
+      confirmedBy: confirmedBy ?? this.confirmedBy,
+      helpfulBy: helpfulBy ?? this.helpfulBy,
+      outdatedBy: outdatedBy ?? this.outdatedBy,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
@@ -96,6 +128,11 @@ class Pin {
         'authorUid': authorUid,
         'mode': mode.name,
         'attachments': attachments.map((a) => a.toMap()).toList(),
+        'reportedBy': reportedBy,
+        'hiddenByReports': hiddenByReports,
+        'confirmedBy': confirmedBy,
+        'helpfulBy': helpfulBy,
+        'outdatedBy': outdatedBy,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
@@ -114,6 +151,11 @@ class Pin {
         'authorUid': authorUid,
         'mode': mode.name,
         'attachments': attachments.map((a) => a.toFirestoreMap()).toList(),
+        'reportedBy': reportedBy,
+        'hiddenByReports': hiddenByReports,
+        'confirmedBy': confirmedBy,
+        'helpfulBy': helpfulBy,
+        'outdatedBy': outdatedBy,
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
@@ -136,6 +178,15 @@ class Pin {
           .whereType<Map>()
           .map((e) => Attachment.fromMap(e))
           .toList(),
+      reportedBy: (map['reportedBy'] as List?)?.whereType<String>().toList() ??
+          const [],
+      hiddenByReports: (map['hiddenByReports'] as bool?) ?? false,
+      confirmedBy: (map['confirmedBy'] as List?)?.whereType<String>().toList() ??
+          const [],
+      helpfulBy: (map['helpfulBy'] as List?)?.whereType<String>().toList() ??
+          const [],
+      outdatedBy: (map['outdatedBy'] as List?)?.whereType<String>().toList() ??
+          const [],
       createdAt:
           DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
       updatedAt:
