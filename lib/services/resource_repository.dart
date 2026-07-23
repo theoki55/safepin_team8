@@ -3,7 +3,8 @@ import '../models/resource.dart';
 /// 地域資源(RESOURCE)の永続化を抽象化するインターフェース。
 ///
 /// ピンの [PinRepository] と同じ設計で、ローカル(Hive)/クラウド(Firestore)を
-/// 差し替えできるようにする。資源は添付を持たないため、pin より単純。
+/// 差し替えできるようにする。添付(写真・ファイル)は [add]/[update] 実装内で
+/// Storage へアップロードしてから本体を保存する。
 abstract class ResourceRepository {
   Future<void> init();
 

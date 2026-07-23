@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/resource.dart';
 import '../providers/app_state.dart';
 import '../utils/service_area.dart';
+import '../widgets/attachment_view.dart';
 import 'resource_form_screen.dart';
 
 /// 地域資源(RESOURCE)の詳細を表示するボトムシート。
@@ -125,6 +126,25 @@ class ResourceDetailSheet extends StatelessWidget {
                   _infoRow(Icons.sticky_note_2_rounded, 'メモ', r.note),
                 if (r.registeredByName.isNotEmpty)
                   _infoRow(Icons.person_rounded, '登録者', r.registeredByName),
+                if (r.attachments.isNotEmpty) ...[
+                  const SizedBox(height: 16),
+                  Row(
+                    children: [
+                      const Icon(Icons.attachment_rounded,
+                          size: 18, color: Colors.black45),
+                      const SizedBox(width: 10),
+                      Text(
+                        '添付（${r.attachments.length}件）',
+                        style: const TextStyle(
+                            fontSize: 12.5,
+                            color: Colors.black54,
+                            fontWeight: FontWeight.w600),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  AttachmentGallery(attachments: r.attachments),
+                ],
                 const SizedBox(height: 16),
                 // 管理者操作
                 if (state.isAdmin) ...[

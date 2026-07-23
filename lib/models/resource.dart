@@ -1,3 +1,4 @@
+import 'attachment.dart';
 import 'resource_category.dart';
 
 /// 地域資源(RESOURCE)1件。
@@ -42,6 +43,9 @@ class Resource {
   /// 登録した管理者名(役員名/自治会名)。監査・表示用。
   final String registeredByName;
 
+  /// 添付ファイル(設備の写真・案内図・使い方PDF など)。
+  final List<Attachment> attachments;
+
   final DateTime createdAt;
   final DateTime updatedAt;
 
@@ -58,6 +62,7 @@ class Resource {
     this.available = true,
     this.registeredByUid = '',
     this.registeredByName = '',
+    this.attachments = const [],
     required this.createdAt,
     required this.updatedAt,
   });
@@ -74,6 +79,7 @@ class Resource {
     bool? available,
     String? registeredByUid,
     String? registeredByName,
+    List<Attachment>? attachments,
     DateTime? updatedAt,
   }) {
     return Resource(
@@ -89,11 +95,13 @@ class Resource {
       available: available ?? this.available,
       registeredByUid: registeredByUid ?? this.registeredByUid,
       registeredByName: registeredByName ?? this.registeredByName,
+      attachments: attachments ?? this.attachments,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
     );
   }
 
+  /// ローカル(Hive)用マップ。添付は base64(dataUrl)も含めて保存。
   Map<String, dynamic> toMap() => {
         'id': id,
         'category': category.key,
@@ -107,15 +115,33 @@ class Resource {
         'available': available,
         'registeredByUid': registeredByUid,
         'registeredByName': registeredByName,
+        'attachments': attachments.map((a) => a.toMap()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
       };
 
-  /// Firestore 用マップ(toMap と同一。日時は ISO 文字列)。
-  Map<String, dynamic> toFirestoreMap() => toMap();
+  /// Firestore 用マップ。添付は base64 を保存せず Storage URL のみ保存する。
+  Map<String, dynamic> toFirestoreMap() => {
+        'id': id,
+        'category': category.key,
+        'name': name,
+        'lat': lat,
+        'lng': lng,
+        'address': address,
+        'note': note,
+        'managedBy': managedBy,
+        'lastInspected': lastInspected?.toIso8601String(),
+        'available': available,
+        'registeredByUid': registeredByUid,
+        'registeredByName': registeredByName,
+        'attachments': attachments.map((a) => a.toFirestoreMap()).toList(),
+        'createdAt': createdAt.toIso8601String(),
+        'updatedAt': updatedAt.toIso8601String(),
+      };
 
   factory Resource.fromMap(Map<dynamic, dynamic> map) {
     final inspectedRaw = map['lastInspected'] as String?;
+    final rawAttachments = (map['attachments'] as List?) ?? const [];
     return Resource(
       id: map['id'] as String,
       category: ResourceCategory.fromName(
@@ -132,6 +158,10 @@ class Resource {
       available: (map['available'] as bool?) ?? true,
       registeredByUid: (map['registeredByUid'] as String?) ?? '',
       registeredByName: (map['registeredByName'] as String?) ?? '',
+      attachments: rawAttachments
+          .whereType<Map>()
+          .map((m) => Attachment.fromMap(m))
+          .toList(),
       createdAt:
           DateTime.tryParse(map['createdAt'] as String? ?? '') ?? DateTime.now(),
       updatedAt:

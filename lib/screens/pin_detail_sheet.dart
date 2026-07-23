@@ -9,8 +9,9 @@ import '../utils/format.dart';
 import '../utils/location_blur.dart';
 import '../widgets/attachment_view.dart';
 import '../widgets/badges.dart';
+import 'post_pin_screen.dart';
 
-/// ピン詳細を表示するボトムシート。ステータス更新・削除ができる。
+/// ピン詳細を表示するボトムシート。ステータス更新・編集・削除ができる。
 class PinDetailSheet extends StatelessWidget {
   final String pinId;
   const PinDetailSheet({super.key, required this.pinId});
@@ -83,13 +84,27 @@ class _DetailBody extends StatelessWidget {
                   const SizedBox(width: 8),
                   PriorityChip(priority: pin.priority),
                   const Spacer(),
-                  // 削除は自分の投稿、または管理者のみ可能。
+                  // 編集・削除は自分の投稿、または管理者のみ可能。
                   if (canManage)
                     PopupMenuButton<String>(
                       onSelected: (v) {
-                        if (v == 'delete') _confirmDelete(context, pin);
+                        if (v == 'edit') {
+                          _openEdit(context, pin);
+                        } else if (v == 'delete') {
+                          _confirmDelete(context, pin);
+                        }
                       },
                       itemBuilder: (_) => [
+                        const PopupMenuItem(
+                          value: 'edit',
+                          child: Row(
+                            children: [
+                              Icon(Icons.edit_outlined, color: Colors.black87),
+                              SizedBox(width: 8),
+                              Text('編集'),
+                            ],
+                          ),
+                        ),
                         const PopupMenuItem(
                           value: 'delete',
                           child: Row(
@@ -383,6 +398,18 @@ class _DetailBody extends StatelessWidget {
                   fontSize: 14.5, fontWeight: FontWeight.w700)),
         ],
       );
+
+  /// 編集画面を開く。詳細シートを閉じてから PostPinScreen(existing:) へ遷移する。
+  void _openEdit(BuildContext context, Pin pin) {
+    final navigator = Navigator.of(context);
+    // 先に詳細シートを閉じる。
+    navigator.pop();
+    navigator.push(
+      MaterialPageRoute(
+        builder: (_) => PostPinScreen(existing: pin),
+      ),
+    );
+  }
 
   void _confirmDelete(BuildContext context, Pin pin) {
     showDialog(

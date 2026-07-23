@@ -14,12 +14,24 @@ import '../utils/service_area.dart';
 import '../widgets/attachment_view.dart';
 import 'location_picker_screen.dart';
 
-/// 新規ピン投稿フォーム。
-/// [initialLocation] が指定されていれば、その位置を初期値にする(地図タップ経由)。
+/// ピン投稿/編集フォーム。
+///
+/// - 新規投稿: [initialLocation] が指定されていれば、その位置を初期値にする(地図タップ経由)。
+/// - 編集: [existing] を渡すと既存ピンの内容をプリフィルし、保存時に上書き更新する。
+///   id・投稿者UID・作成日時・信頼度シグナル(現地確認済など)・ステータスは保持する。
 class PostPinScreen extends StatefulWidget {
   final LatLng? initialLocation;
   final PinType? initialType;
-  const PostPinScreen({super.key, this.initialLocation, this.initialType});
+
+  /// 編集対象。null なら新規投稿。
+  final Pin? existing;
+
+  const PostPinScreen({
+    super.key,
+    this.initialLocation,
+    this.initialType,
+    this.existing,
+  });
 
   @override
   State<PostPinScreen> createState() => _PostPinScreenState();
@@ -42,13 +54,29 @@ class _PostPinScreenState extends State<PostPinScreen> {
   bool _locating = false;
   bool _saving = false;
 
+  /// 編集モードかどうか。
+  bool get _isEdit => widget.existing != null;
+
   @override
   void initState() {
     super.initState();
-    _type = widget.initialType ?? PinType.need;
-    _location = widget.initialLocation;
-    final saved = context.read<AppState>().authorName;
-    if (saved.isNotEmpty) _authorCtrl.text = saved;
+    final existing = widget.existing;
+    if (existing != null) {
+      // 編集: 既存の内容をプリフィルする。
+      _type = existing.type;
+      _priority = existing.priority;
+      _location = LatLng(existing.lat, existing.lng);
+      _titleCtrl.text = existing.title;
+      _commentCtrl.text = existing.comment;
+      _authorCtrl.text = existing.authorName;
+      _attachments.addAll(existing.attachments);
+    } else {
+      // 新規投稿。
+      _type = widget.initialType ?? PinType.need;
+      _location = widget.initialLocation;
+      final saved = context.read<AppState>().authorName;
+      if (saved.isNotEmpty) _authorCtrl.text = saved;
+    }
   }
 
   @override
@@ -133,6 +161,36 @@ class _PostPinScreenState extends State<PostPinScreen> {
     await state.setAuthorName(_authorCtrl.text.trim());
 
     final now = DateTime.now();
+    final existing = widget.existing;
+
+    if (existing != null) {
+      // 編集: id・作成日時・投稿者UID・信頼度シグナル・ステータス等を保持しつつ
+      // 編集可能な項目のみ上書きする。
+      final updated = existing.copyWith(
+        type: _type,
+        priority: _priority,
+        title: _titleCtrl.text.trim(),
+        comment: _commentCtrl.text.trim(),
+        lat: _location!.latitude,
+        lng: _location!.longitude,
+        authorName: author,
+        attachments: List.of(_attachments),
+        // 種別変更でステータスが不整合になる場合はその種別の初期値に丸める。
+        status: _type.supportsStatus(existing.status)
+            ? existing.status
+            : _type.availableStatuses.first,
+        updatedAt: now,
+      );
+      await state.updatePin(updated);
+      if (!mounted) return;
+      Navigator.pop(context, true);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('ピンを更新しました')),
+      );
+      return;
+    }
+
+    // 新規投稿。
     final pin = Pin(
       id: const Uuid().v4(),
       type: _type,
@@ -189,7 +247,7 @@ class _PostPinScreenState extends State<PostPinScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('ピンを立てる')),
+      appBar: AppBar(title: Text(_isEdit ? 'ピンを編集' : 'ピンを立てる')),
       body: SafeArea(
         child: Form(
           key: _formKey,
@@ -265,8 +323,12 @@ class _PostPinScreenState extends State<PostPinScreen> {
                       child: CircularProgressIndicator(
                           strokeWidth: 2, color: Colors.white),
                     )
-                  : const Icon(Icons.push_pin_rounded),
-              label: Text(_saving ? '投稿中...' : 'この内容で投稿する'),
+                  : Icon(_isEdit
+                      ? Icons.save_rounded
+                      : Icons.push_pin_rounded),
+              label: Text(_saving
+                  ? (_isEdit ? '更新中...' : '投稿中...')
+                  : (_isEdit ? 'この内容で更新する' : 'この内容で投稿する')),
             ),
           ),
         ),

@@ -4,10 +4,13 @@ import 'package:latlong2/latlong.dart';
 import 'package:provider/provider.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/attachment.dart';
 import '../models/resource.dart';
 import '../models/resource_category.dart';
 import '../providers/app_state.dart';
+import '../services/attachment_service.dart';
 import '../utils/service_area.dart';
+import '../widgets/attachment_view.dart';
 import 'location_picker_screen.dart';
 
 /// 管理者(自治会役員)向けの「地域資源を1件登録/編集」フォーム。
@@ -35,6 +38,9 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
   bool _available = true;
   bool _saving = false;
 
+  final _attachmentService = AttachmentService();
+  final List<Attachment> _attachments = [];
+
   bool get _isEdit => widget.existing != null;
 
   @override
@@ -50,6 +56,7 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
       _location = LatLng(e.lat, e.lng);
       _lastInspected = e.lastInspected;
       _available = e.available;
+      _attachments.addAll(e.attachments);
     } else {
       // 新規時は管理者名を管理団体の初期値に流用
       final state = context.read<AppState>();
@@ -92,6 +99,32 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
     }
   }
 
+  Future<void> _addImage(bool fromCamera) async {
+    try {
+      final a = await _attachmentService.pickImage(fromCamera: fromCamera);
+      if (a != null) setState(() => _attachments.add(a));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('画像を追加できませんでした（$e）')),
+        );
+      }
+    }
+  }
+
+  Future<void> _addFiles() async {
+    try {
+      final list = await _attachmentService.pickFiles();
+      if (list.isNotEmpty) setState(() => _attachments.addAll(list));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('ファイルを追加できませんでした（$e）')),
+        );
+      }
+    }
+  }
+
   Future<void> _save() async {
     if (!_formKey.currentState!.validate()) return;
     if (_location == null) {
@@ -122,6 +155,7 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
           managedBy: _managedByController.text.trim(),
           lastInspected: _lastInspected,
           available: _available,
+          attachments: List.of(_attachments),
           updatedAt: now,
         );
         await state.updateResource(updated);
@@ -139,6 +173,7 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
           available: _available,
           registeredByUid: state.currentUid,
           registeredByName: state.adminName2,
+          attachments: List.of(_attachments),
           createdAt: now,
           updatedAt: now,
         );
@@ -275,6 +310,8 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
                   border: OutlineInputBorder(),
                 ),
               ),
+              const SizedBox(height: 20),
+              _attachmentSection(),
               const SizedBox(height: 24),
               FilledButton.icon(
                 onPressed: _saving ? null : _save,
@@ -415,6 +452,46 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
           ),
         ],
       ],
+    );
+  }
+
+  Widget _attachmentSection() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('写真・ファイル添付(任意)',
+            style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            _attachButton(
+                Icons.photo_camera_rounded, 'カメラ', () => _addImage(true)),
+            _attachButton(
+                Icons.photo_library_rounded, '写真', () => _addImage(false)),
+            _attachButton(Icons.attach_file_rounded, 'ファイル', _addFiles),
+          ],
+        ),
+        if (_attachments.isNotEmpty) ...[
+          const SizedBox(height: 12),
+          EditableAttachmentGrid(
+            attachments: _attachments,
+            onRemove: (a) => setState(() => _attachments.remove(a)),
+          ),
+        ],
+      ],
+    );
+  }
+
+  Widget _attachButton(IconData icon, String label, VoidCallback onTap) {
+    return OutlinedButton.icon(
+      onPressed: onTap,
+      icon: Icon(icon, size: 18),
+      label: Text(label),
+      style: OutlinedButton.styleFrom(
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+      ),
     );
   }
 }
