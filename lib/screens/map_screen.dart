@@ -8,6 +8,7 @@ import '../providers/app_state.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../utils/location_blur.dart';
+import '../utils/service_area_data.dart';
 import '../widgets/pin_marker.dart';
 import 'filter_sheet.dart';
 import 'pin_detail_sheet.dart';
@@ -102,6 +103,21 @@ class _MapScreenState extends State<MapScreen> {
                   urlTemplate: AppConstants.osmTileUrl,
                   userAgentPackageName: AppConstants.osmUserAgent,
                   maxZoom: 19,
+                ),
+                // サービス対象区域(下目黒4・5・6丁目)の境界を薄い緑で表示。
+                PolygonLayer(
+                  polygons: [
+                    for (final area in kServiceAreaPolygons)
+                      Polygon(
+                        points: area.points,
+                        color: const Color(AppConstants.serviceAreaColorValue)
+                            .withValues(alpha: 0.08),
+                        borderColor:
+                            const Color(AppConstants.serviceAreaColorValue)
+                                .withValues(alpha: 0.7),
+                        borderStrokeWidth: 2,
+                      ),
+                  ],
                 ),
                 // ぼかし円: NEED/OFFER は自宅等と結びつくため、
                 // 正確な位置ではなく「このあたり(約150m四方)」を示す円を描く。

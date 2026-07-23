@@ -10,6 +10,7 @@ import '../providers/app_state.dart';
 import '../services/attachment_service.dart';
 import '../services/location_service.dart';
 import '../utils/format.dart';
+import '../utils/service_area.dart';
 import '../widgets/attachment_view.dart';
 import 'location_picker_screen.dart';
 
@@ -116,6 +117,12 @@ class _PostPinScreenState extends State<PostPinScreen> {
       );
       return;
     }
+    // 区域外の場合は警告して確認を取る(ブロックはしない)。
+    if (!ServiceArea.contains(_location!)) {
+      final proceed = await _confirmOutOfArea();
+      if (proceed != true) return;
+      if (!mounted) return;
+    }
     setState(() => _saving = true);
     final state = context.read<AppState>();
     // 起動時に匿名サインインが未完了でも、投稿直前に再度確保を試みる。
@@ -147,6 +154,35 @@ class _PostPinScreenState extends State<PostPinScreen> {
     Navigator.pop(context, true);
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('ピンを投稿しました')),
+    );
+  }
+
+  /// 区域外投稿の確認ダイアログ。投稿自体はブロックしない。
+  Future<bool?> _confirmOutOfArea() {
+    return showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        icon: const Icon(Icons.warning_amber_rounded,
+            color: Color(0xFFE65100), size: 32),
+        title: const Text('対象区域の外です'),
+        content: Text(
+          '指定した位置は対象区域（${ServiceArea.areaLabel}）の外にあります。\n\n'
+          'このアプリは地域限定の実証運用のため、'
+          '区域内での投稿を推奨しています。'
+          'それでもこの位置で投稿しますか？',
+          style: const TextStyle(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('位置を選び直す'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            child: const Text('このまま投稿する'),
+          ),
+        ],
+      ),
     );
   }
 
@@ -348,7 +384,7 @@ class _PostPinScreenState extends State<PostPinScreen> {
       ),
       child: Column(
         children: [
-          if (_location != null)
+          if (_location != null) ...[
             Row(
               children: [
                 const Icon(Icons.place_rounded, color: Color(0xFFE64A2E)),
@@ -360,8 +396,10 @@ class _PostPinScreenState extends State<PostPinScreen> {
                   ),
                 ),
               ],
-            )
-          else
+            ),
+            const SizedBox(height: 8),
+            _areaIndicator(_location!),
+          ] else
             Row(
               children: const [
                 Icon(Icons.location_off_rounded, color: Colors.black38),
@@ -397,6 +435,48 @@ class _PostPinScreenState extends State<PostPinScreen> {
                 ),
               ),
             ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 指定位置が対象区域(下目黒4・5・6丁目)の内/外かを示す帯。
+  Widget _areaIndicator(LatLng loc) {
+    final areaName = ServiceArea.areaNameOf(loc);
+    final inside = areaName != null;
+    final bg = inside ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0);
+    final fg = inside ? const Color(0xFF2E7D32) : const Color(0xFFE65100);
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: bg,
+        borderRadius: BorderRadius.circular(10),
+      ),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Icon(
+            inside ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
+            color: fg,
+            size: 18,
+          ),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              inside
+                  ? '対象区域内（$areaName）です。'
+                  : '対象区域（${ServiceArea.areaLabel}）の外です。'
+                      'このまま投稿もできますが、地域限定の実証運用のため'
+                      '区域内での投稿にご協力ください。',
+              style: TextStyle(
+                fontSize: 12.5,
+                height: 1.35,
+                color: fg,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
           ),
         ],
       ),

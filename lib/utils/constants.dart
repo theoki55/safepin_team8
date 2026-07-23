@@ -2,8 +2,8 @@ import 'package:latlong2/latlong.dart';
 
 /// アプリ全体で使う定数。
 class AppConstants {
-  /// 初期表示の地図中心(東京駅周辺)。実運用では対象地域に合わせて変更する。
-  static const LatLng defaultCenter = LatLng(35.681236, 139.767125);
+  /// 初期表示の地図中心(サービス対象区域=下目黒4・5・6丁目の中心付近)。
+  static const LatLng defaultCenter = LatLng(35.628178, 139.702941);
   static const double defaultZoom = 15.0;
 
   /// OpenStreetMap タイル(APIキー不要)
@@ -30,4 +30,14 @@ class AppConstants {
   /// 「古い情報」が「役に立った」を上回り、かつこの件数を超えたら
   /// 「古い可能性」の注意表示を出す(自動非表示はしない)。
   static const int outdatedWarnThreshold = 3;
+
+  // ---- 機能⑥: サービス対象区域(丁目境界) ----
+
+  /// 対象区域の説明テキスト(UI 表示用)。
+  /// 実際の丁目名は ServiceArea.areaLabel から動的に取得する。
+  static const String serviceAreaNote =
+      'このアプリは下目黒4・5・6丁目を対象にした地域限定の実証運用です。';
+
+  /// 区域境界ポリゴンの線・塗りの色(緑系)。
+  static const int serviceAreaColorValue = 0xFF2E7D32;
 }
