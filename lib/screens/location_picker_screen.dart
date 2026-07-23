@@ -31,13 +31,17 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
     _inArea = ServiceArea.contains(_center);
   }
 
-  /// 地図移動時: 中心座標を更新し、区域内/外が変化したときのみ再描画する。
+  /// 地図移動時: 中心座標と区域内/外を更新して再描画する。
+  /// (座標表示・中央ピン色・下部インジケーターを地図移動に追従させるため、
+  ///  内外が変わらなくても毎回 setState する)
   void _onPositionChanged(MapCamera camera, bool hasGesture) {
-    _center = camera.center;
-    final nowIn = ServiceArea.contains(_center);
-    if (nowIn != _inArea) {
-      setState(() => _inArea = nowIn);
-    }
+    final c = camera.center;
+    final nowIn = ServiceArea.contains(c);
+    if (!mounted) return;
+    setState(() {
+      _center = c;
+      _inArea = nowIn;
+    });
   }
 
   Future<void> _goToCurrent() async {
@@ -102,11 +106,15 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Icon(Icons.location_on,
-                        size: 48,
-                        color: _inArea
-                            ? const Color(0xFFE64A2E)
-                            : const Color(0xFFE65100)),
+                    Icon(
+                      _inArea
+                          ? Icons.location_on
+                          : Icons.wrong_location_rounded,
+                      size: 52,
+                      color: _inArea
+                          ? const Color(0xFFE64A2E)
+                          : const Color(0xFFFF6D00),
+                    ),
                   ],
                 ),
               ),
