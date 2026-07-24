@@ -31,7 +31,19 @@ class _HomeScreenState extends State<HomeScreen> {
         title: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(_index == 0 ? AppConstants.appName : _titles[_index]),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Flexible(
+                  child: Text(
+                    _index == 0 ? AppConstants.appName : _titles[_index],
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                _communityBadge(state),
+              ],
+            ),
             if (_index == 0)
               const Text(
                 AppConstants.appTagline,
@@ -103,6 +115,44 @@ class _HomeScreenState extends State<HomeScreen> {
               selectedIcon: Icon(Icons.settings),
               label: '設定'),
         ],
+      ),
+    );
+  }
+
+  /// ヘッダに表示する現在の対象地域バッジ。タップで設定タブへ移動する。
+  Widget _communityBadge(AppState state) {
+    final c = state.community;
+    const green = Color(0xFF2E7D32);
+    return GestureDetector(
+      onTap: () => setState(() => _index = 2),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+        decoration: BoxDecoration(
+          color: green.withValues(alpha: 0.10),
+          borderRadius: BorderRadius.circular(20),
+          border: Border.all(color: green.withValues(alpha: 0.5)),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Icon(
+              c.area.hasBoundaryCheck
+                  ? Icons.place_rounded
+                  : Icons.location_city_rounded,
+              size: 12,
+              color: green,
+            ),
+            const SizedBox(width: 3),
+            Text(
+              c.name,
+              style: const TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: green,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
