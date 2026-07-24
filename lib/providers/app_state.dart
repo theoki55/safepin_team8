@@ -124,13 +124,33 @@ class AppState extends ChangeNotifier {
 
   /// 合言葉を照合して管理者モードを有効にする。成功したら true。
   /// [adminName] は登録する役員名/自治会名(任意)。
+  /// 照合は現在選択中のコミュニティの合言葉ハッシュに対して行う。
   Future<bool> tryEnableAdmin(String passphrase, {String adminName = ''}) async {
-    final ok = await admin.login(passphrase, adminName);
+    final ok = await admin.login(
+      passphrase,
+      adminName,
+      communityId: _community.id,
+      fallbackHash: _community.adminPassHash,
+    );
     if (!ok) return false;
     _isAdmin = true;
     _adminName = adminName.trim();
     notifyListeners();
     return true;
+  }
+
+  /// 現在のコミュニティの管理パスワードを変更する。
+  /// 現在の合言葉が正しければ新しい合言葉を保存して true。
+  Future<bool> changeAdminPassword({
+    required String currentPassphrase,
+    required String newPassphrase,
+  }) async {
+    return admin.changePassphrase(
+      communityId: _community.id,
+      fallbackHash: _community.adminPassHash,
+      currentPassphrase: currentPassphrase,
+      newPassphrase: newPassphrase,
+    );
   }
 
   /// 管理者モードを解除する。

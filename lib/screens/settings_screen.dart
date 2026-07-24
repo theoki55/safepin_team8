@@ -310,6 +310,15 @@ class SettingsScreen extends StatelessWidget {
             ),
             const Divider(height: 1),
             ListTile(
+              leading:
+                  const Icon(Icons.password_rounded, color: Colors.orange),
+              title: const Text('管理パスワードを変更'),
+              subtitle: Text('${state.community.name} の合言葉を変更します'),
+              trailing: const Icon(Icons.chevron_right_rounded),
+              onTap: () => _promptChangePassword(context, state),
+            ),
+            const Divider(height: 1),
+            ListTile(
               leading: const Icon(Icons.logout_rounded, color: Colors.redAccent),
               title: const Text('管理者モードを解除'),
               onTap: () async {
@@ -419,6 +428,135 @@ class SettingsScreen extends StatelessWidget {
         backgroundColor: success ? const Color(0xFF00897B) : Colors.redAccent,
       ),
     );
+  }
+
+  /// 管理パスワード変更ダイアログ（現在の合言葉 → 新しい合言葉 → 確認）。
+  Future<void> _promptChangePassword(
+      BuildContext context, AppState state) async {
+    final currentCtrl = TextEditingController();
+    final newCtrl = TextEditingController();
+    final confirmCtrl = TextEditingController();
+    var obscureCurrent = true;
+    var obscureNew = true;
+    String? errorText;
+
+    final result = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setState) {
+            return AlertDialog(
+              title: const Text('管理パスワードを変更'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      '「${state.community.name}」の合言葉を変更します。'
+                      '変更後はこの端末に保存され、次回以降のログインに使われます。',
+                      style: const TextStyle(fontSize: 13),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: currentCtrl,
+                      obscureText: obscureCurrent,
+                      autofocus: true,
+                      decoration: InputDecoration(
+                        labelText: '現在の合言葉',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureCurrent
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () =>
+                              setState(() => obscureCurrent = !obscureCurrent),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: newCtrl,
+                      obscureText: obscureNew,
+                      decoration: InputDecoration(
+                        labelText: '新しい合言葉（4文字以上）',
+                        border: const OutlineInputBorder(),
+                        suffixIcon: IconButton(
+                          icon: Icon(obscureNew
+                              ? Icons.visibility_off_outlined
+                              : Icons.visibility_outlined),
+                          onPressed: () =>
+                              setState(() => obscureNew = !obscureNew),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    TextField(
+                      controller: confirmCtrl,
+                      obscureText: obscureNew,
+                      decoration: const InputDecoration(
+                        labelText: '新しい合言葉（確認）',
+                        border: OutlineInputBorder(),
+                      ),
+                    ),
+                    if (errorText != null) ...[
+                      const SizedBox(height: 10),
+                      Text(
+                        errorText!,
+                        style: const TextStyle(
+                            color: Colors.redAccent, fontSize: 12),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(dialogContext, false),
+                  child: const Text('キャンセル'),
+                ),
+                FilledButton(
+                  onPressed: () async {
+                    final current = currentCtrl.text.trim();
+                    final newPass = newCtrl.text.trim();
+                    final confirm = confirmCtrl.text.trim();
+                    if (newPass.length < 4) {
+                      setState(() => errorText = '新しい合言葉は4文字以上にしてください。');
+                      return;
+                    }
+                    if (newPass != confirm) {
+                      setState(() => errorText = '新しい合言葉が一致しません。');
+                      return;
+                    }
+                    final ok = await state.changeAdminPassword(
+                      currentPassphrase: current,
+                      newPassphrase: newPass,
+                    );
+                    if (!ok) {
+                      setState(() => errorText = '現在の合言葉が正しくありません。');
+                      return;
+                    }
+                    if (dialogContext.mounted) {
+                      Navigator.pop(dialogContext, true);
+                    }
+                  },
+                  child: const Text('変更する'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    if (result == true && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('管理パスワードを変更しました'),
+          backgroundColor: Color(0xFF00897B),
+        ),
+      );
+    }
   }
 
   Widget _modeCard(BuildContext context, AppState state) {
