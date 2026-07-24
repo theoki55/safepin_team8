@@ -10,7 +10,6 @@ import '../providers/app_state.dart';
 import '../services/attachment_service.dart';
 import '../services/location_service.dart';
 import '../utils/format.dart';
-import '../utils/service_area.dart';
 import '../widgets/attachment_view.dart';
 import 'location_picker_screen.dart';
 
@@ -145,14 +144,15 @@ class _PostPinScreenState extends State<PostPinScreen> {
       );
       return;
     }
-    // 区域外の場合は警告して確認を取る(ブロックはしない)。
-    if (!ServiceArea.contains(_location!)) {
+    final state = context.read<AppState>();
+    // 区域判定を持つコミュニティ(丁目ポリゴン等)でのみ、区域外を警告する。
+    // 市区町村全体など判定を持たないコミュニティでは確認しない。
+    if (state.hasAreaCheck && !state.isInArea(_location!)) {
       final proceed = await _confirmOutOfArea();
       if (proceed != true) return;
       if (!mounted) return;
     }
     setState(() => _saving = true);
-    final state = context.read<AppState>();
     // 起動時に匿名サインインが未完了でも、投稿直前に再度確保を試みる。
     // (Web release ではプラグイン初期化が遅れることがあるため)
     await state.ensureSignedIn();
@@ -217,6 +217,7 @@ class _PostPinScreenState extends State<PostPinScreen> {
 
   /// 区域外投稿の確認ダイアログ。投稿自体はブロックしない。
   Future<bool?> _confirmOutOfArea() {
+    final label = context.read<AppState>().community.name;
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
@@ -224,7 +225,7 @@ class _PostPinScreenState extends State<PostPinScreen> {
             color: Color(0xFFE65100), size: 32),
         title: const Text('対象区域の外です'),
         content: Text(
-          '指定した位置は対象区域（${ServiceArea.areaLabel}）の外にあります。\n\n'
+          '指定した位置は対象区域（$label）の外にあります。\n\n'
           'このアプリは地域限定の実証運用のため、'
           '区域内での投稿を推奨しています。'
           'それでもこの位置で投稿しますか？',
@@ -459,8 +460,10 @@ class _PostPinScreenState extends State<PostPinScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 8),
-            _areaIndicator(_location!),
+            if (context.read<AppState>().hasAreaCheck) ...[
+              const SizedBox(height: 8),
+              _areaIndicator(_location!),
+            ],
           ] else
             Row(
               children: const [
@@ -503,9 +506,10 @@ class _PostPinScreenState extends State<PostPinScreen> {
     );
   }
 
-  /// 指定位置が対象区域(下目黒4・5・6丁目)の内/外かを示す帯。
+  /// 指定位置が対象区域(丁目ポリゴン等)の内/外かを示す帯。
   Widget _areaIndicator(LatLng loc) {
-    final areaName = ServiceArea.areaNameOf(loc);
+    final state = context.read<AppState>();
+    final areaName = state.area.areaNameOf(loc);
     final inside = areaName != null;
     final bg = inside ? const Color(0xFFE8F5E9) : const Color(0xFFFFF3E0);
     final fg = inside ? const Color(0xFF2E7D32) : const Color(0xFFE65100);
@@ -529,7 +533,7 @@ class _PostPinScreenState extends State<PostPinScreen> {
             child: Text(
               inside
                   ? '対象区域内（$areaName）です。'
-                  : '対象区域（${ServiceArea.areaLabel}）の外です。'
+                  : '対象区域（${state.community.name}）の外です。'
                       'このまま投稿もできますが、地域限定の実証運用のため'
                       '区域内での投稿にご協力ください。',
               style: TextStyle(

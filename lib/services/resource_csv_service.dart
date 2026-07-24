@@ -1,9 +1,10 @@
 import 'package:latlong2/latlong.dart';
 import 'package:uuid/uuid.dart';
 
+import '../models/community.dart';
 import '../models/resource.dart';
 import '../models/resource_category.dart';
-import '../utils/service_area.dart';
+import '../utils/communities.dart';
 
 /// CSV 1行の解析結果(プレビュー表示用)。
 ///
@@ -84,6 +85,8 @@ class ResourceCsvService {
     String content, {
     String registeredByUid = '',
     String registeredByName = '',
+    Area? area,
+    String communityId = '',
   }) {
     final rows = _splitCsvRows(content);
     if (rows.isEmpty) {
@@ -172,9 +175,9 @@ class ResourceCsvService {
         continue;
       }
 
-      // 区域外チェック(警告のみ)
+      // 区域外チェック(警告のみ)。区域判定を持つコミュニティでのみ実施。
       final point = LatLng(lat, lng);
-      if (!ServiceArea.contains(point)) {
+      if (area != null && area.hasBoundaryCheck && !area.contains(point)) {
         warnings.add('サービス対象区域外の座標です');
       }
 
@@ -204,6 +207,7 @@ class ResourceCsvService {
         available: available,
         registeredByUid: registeredByUid,
         registeredByName: registeredByName,
+        communityId: communityId.isNotEmpty ? communityId : kDefaultCommunityId,
         createdAt: now,
         updatedAt: now,
       );

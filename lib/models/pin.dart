@@ -1,3 +1,4 @@
+import '../utils/communities.dart';
 import 'attachment.dart';
 import 'enums.dart';
 
@@ -24,6 +25,9 @@ class Pin {
 
   /// 平時 / 災害 どちらのモードで投稿されたか
   final AppMode mode;
+
+  /// 所属コミュニティID(自治会/地域)。未設定の旧データは既定へフォールバック。
+  final String communityId;
 
   final List<Attachment> attachments;
 
@@ -59,6 +63,7 @@ class Pin {
     required this.authorName,
     this.authorUid = '',
     required this.mode,
+    this.communityId = kDefaultCommunityId,
     required this.attachments,
     this.reportedBy = const [],
     this.hiddenByReports = false,
@@ -80,6 +85,7 @@ class Pin {
     String? authorName,
     String? authorUid,
     AppMode? mode,
+    String? communityId,
     List<Attachment>? attachments,
     List<String>? reportedBy,
     bool? hiddenByReports,
@@ -100,6 +106,7 @@ class Pin {
       authorName: authorName ?? this.authorName,
       authorUid: authorUid ?? this.authorUid,
       mode: mode ?? this.mode,
+      communityId: communityId ?? this.communityId,
       attachments: attachments ?? this.attachments,
       reportedBy: reportedBy ?? this.reportedBy,
       hiddenByReports: hiddenByReports ?? this.hiddenByReports,
@@ -127,6 +134,7 @@ class Pin {
         'authorName': authorName,
         'authorUid': authorUid,
         'mode': mode.name,
+        'communityId': communityId,
         'attachments': attachments.map((a) => a.toMap()).toList(),
         'reportedBy': reportedBy,
         'hiddenByReports': hiddenByReports,
@@ -150,6 +158,7 @@ class Pin {
         'authorName': authorName,
         'authorUid': authorUid,
         'mode': mode.name,
+        'communityId': communityId,
         'attachments': attachments.map((a) => a.toFirestoreMap()).toList(),
         'reportedBy': reportedBy,
         'hiddenByReports': hiddenByReports,
@@ -174,6 +183,9 @@ class Pin {
       authorName: (map['authorName'] as String?) ?? '匿名',
       authorUid: (map['authorUid'] as String?) ?? '',
       mode: AppMode.fromName(map['mode'] as String? ?? 'normal'),
+      communityId: (map['communityId'] as String?)?.isNotEmpty == true
+          ? map['communityId'] as String
+          : kDefaultCommunityId,
       attachments: rawAttachments
           .whereType<Map>()
           .map((e) => Attachment.fromMap(e))

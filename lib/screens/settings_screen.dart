@@ -7,6 +7,7 @@ import '../models/enums.dart';
 import '../providers/app_state.dart';
 import '../services/admin_service.dart';
 import '../services/pin_import_service.dart';
+import '../utils/communities.dart';
 import '../utils/constants.dart';
 import 'multi_delete_screen.dart';
 import 'resource_bulk_upload_screen.dart';
@@ -23,6 +24,10 @@ class SettingsScreen extends StatelessWidget {
         return ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 90),
           children: [
+            _sectionTitle('対象地域'),
+            const SizedBox(height: 8),
+            _communityCard(context, state),
+            const SizedBox(height: 24),
             _sectionTitle('モード'),
             const SizedBox(height: 8),
             _modeCard(context, state),
@@ -142,6 +147,123 @@ class SettingsScreen extends StatelessWidget {
 
   Widget _sectionTitle(String text) => Text(text,
       style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: Colors.black54));
+
+  /// 対象地域(コミュニティ)の選択カード。
+  Widget _communityCard(BuildContext context, AppState state) {
+    return Card(
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Column(
+          children: [
+            for (final id in kCommunityOrder)
+              if (kCommunities[id] != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  child: () {
+                    final c = kCommunities[id]!;
+                    final selected = state.communityId == id;
+                    return InkWell(
+                      borderRadius: BorderRadius.circular(12),
+                      onTap: selected
+                          ? null
+                          : () => _confirmSwitchCommunity(context, state, id),
+                      child: Container(
+                        padding: const EdgeInsets.all(12),
+                        decoration: BoxDecoration(
+                          color: selected
+                              ? const Color(0xFF2E7D32).withValues(alpha: 0.10)
+                              : Colors.transparent,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: selected
+                                ? const Color(0xFF2E7D32)
+                                : Colors.black12,
+                            width: selected ? 1.6 : 1,
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(
+                              c.area.hasBoundaryCheck
+                                  ? Icons.place_rounded
+                                  : Icons.location_city_rounded,
+                              color: selected
+                                  ? const Color(0xFF2E7D32)
+                                  : Colors.black45,
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(c.name,
+                                      style: const TextStyle(
+                                          fontWeight: FontWeight.w700,
+                                          fontSize: 15)),
+                                  const SizedBox(height: 2),
+                                  Text(
+                                    c.note,
+                                    style: const TextStyle(
+                                        color: Colors.black54, fontSize: 12),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            if (selected)
+                              const Icon(Icons.check_circle_rounded,
+                                  color: Color(0xFF2E7D32)),
+                          ],
+                        ),
+                      ),
+                    );
+                  }(),
+                ),
+            const SizedBox(height: 4),
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 4),
+              child: Text(
+                '地域を切り替えると、地図・登録先・表示されるピン/資源が'
+                'その地域のものに変わります。管理者モードは切替時に解除されます。',
+                style: TextStyle(fontSize: 11, color: Colors.black45, height: 1.4),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Future<void> _confirmSwitchCommunity(
+      BuildContext context, AppState state, String id) async {
+    final target = kCommunities[id];
+    if (target == null) return;
+    final messenger = ScaffoldMessenger.of(context);
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('対象地域を切り替えますか？'),
+        content: Text(
+          '「${target.name}」に切り替えます。\n\n'
+          '地図の中心・登録先・表示データがこの地域のものになります。'
+          '${state.isAdmin ? '\n\n※ 現在の管理者モードは解除されます。' : ''}',
+          style: const TextStyle(fontSize: 13.5, height: 1.4),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('キャンセル')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('切り替える')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    await state.switchCommunity(id);
+    messenger.showSnackBar(
+      SnackBar(content: Text('「${target.name}」に切り替えました')),
+    );
+  }
 
   Widget _adminCard(BuildContext context, AppState state) {
     if (state.isAdmin) {

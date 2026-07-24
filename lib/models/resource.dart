@@ -1,3 +1,4 @@
+import '../utils/communities.dart';
 import 'attachment.dart';
 import 'resource_category.dart';
 
@@ -43,6 +44,9 @@ class Resource {
   /// 登録した管理者名(役員名/自治会名)。監査・表示用。
   final String registeredByName;
 
+  /// 所属コミュニティID(自治会/地域)。未設定の旧データは既定へフォールバック。
+  final String communityId;
+
   /// 添付ファイル(設備の写真・案内図・使い方PDF など)。
   final List<Attachment> attachments;
 
@@ -62,6 +66,7 @@ class Resource {
     this.available = true,
     this.registeredByUid = '',
     this.registeredByName = '',
+    this.communityId = kDefaultCommunityId,
     this.attachments = const [],
     required this.createdAt,
     required this.updatedAt,
@@ -79,6 +84,7 @@ class Resource {
     bool? available,
     String? registeredByUid,
     String? registeredByName,
+    String? communityId,
     List<Attachment>? attachments,
     DateTime? updatedAt,
   }) {
@@ -95,6 +101,7 @@ class Resource {
       available: available ?? this.available,
       registeredByUid: registeredByUid ?? this.registeredByUid,
       registeredByName: registeredByName ?? this.registeredByName,
+      communityId: communityId ?? this.communityId,
       attachments: attachments ?? this.attachments,
       createdAt: createdAt,
       updatedAt: updatedAt ?? DateTime.now(),
@@ -115,6 +122,7 @@ class Resource {
         'available': available,
         'registeredByUid': registeredByUid,
         'registeredByName': registeredByName,
+        'communityId': communityId,
         'attachments': attachments.map((a) => a.toMap()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
@@ -134,6 +142,7 @@ class Resource {
         'available': available,
         'registeredByUid': registeredByUid,
         'registeredByName': registeredByName,
+        'communityId': communityId,
         'attachments': attachments.map((a) => a.toFirestoreMap()).toList(),
         'createdAt': createdAt.toIso8601String(),
         'updatedAt': updatedAt.toIso8601String(),
@@ -158,6 +167,9 @@ class Resource {
       available: (map['available'] as bool?) ?? true,
       registeredByUid: (map['registeredByUid'] as String?) ?? '',
       registeredByName: (map['registeredByName'] as String?) ?? '',
+      communityId: (map['communityId'] as String?)?.isNotEmpty == true
+          ? map['communityId'] as String
+          : kDefaultCommunityId,
       attachments: rawAttachments
           .whereType<Map>()
           .map((m) => Attachment.fromMap(m))

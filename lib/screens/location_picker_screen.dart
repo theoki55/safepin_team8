@@ -1,12 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_map/flutter_map.dart';
 import 'package:latlong2/latlong.dart';
+import 'package:provider/provider.dart';
 
+import '../models/community.dart';
+import '../providers/app_state.dart';
 import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../utils/format.dart';
-import '../utils/service_area.dart';
-import '../utils/service_area_data.dart';
 
 /// 地図をタップして位置を選択する画面。中央固定ピン方式。
 class LocationPickerScreen extends StatefulWidget {
@@ -21,22 +22,31 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
   final _mapController = MapController();
   final _locationService = LocationService();
   late LatLng _center;
+  late Area _area;
+  late bool _hasCheck;
+  late String _communityName;
+  late double _initialZoom;
   bool _locating = false;
   bool _inArea = false;
 
   @override
   void initState() {
     super.initState();
-    _center = widget.initial ?? AppConstants.defaultCenter;
-    _inArea = ServiceArea.contains(_center);
+    final state = context.read<AppState>();
+    _area = state.area;
+    _hasCheck = state.hasAreaCheck;
+    _communityName = state.community.name;
+    _center = widget.initial ?? state.mapCenter;
+    // 丁目単位は近接(16)、市区町村など広域はコミュニティの初期ズームを使う。
+    _initialZoom = _hasCheck ? 16.0 : state.mapZoom;
+    // 判定を持たないコミュニティ(市区町村全体)では常に「内」扱い。
+    _inArea = !_hasCheck || _area.contains(_center);
   }
 
   /// 地図移動時: 中心座標と区域内/外を更新して再描画する。
-  /// (座標表示・中央ピン色・下部インジケーターを地図移動に追従させるため、
-  ///  内外が変わらなくても毎回 setState する)
   void _onPositionChanged(MapCamera camera, bool hasGesture) {
     final c = camera.center;
-    final nowIn = ServiceArea.contains(c);
+    final nowIn = !_hasCheck || _area.contains(c);
     if (!mounted) return;
     setState(() {
       _center = c;
@@ -54,7 +64,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
       _mapController.move(p, 17);
       setState(() {
         _center = p;
-        _inArea = ServiceArea.contains(p);
+        _inArea = !_hasCheck || _area.contains(p);
       });
     } else {
       ScaffoldMessenger.of(context)
@@ -72,7 +82,7 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
             mapController: _mapController,
             options: MapOptions(
               initialCenter: _center,
-              initialZoom: 16,
+              initialZoom: _initialZoom,
               onPositionChanged: _onPositionChanged,
             ),
             children: [
@@ -81,21 +91,23 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
                 userAgentPackageName: AppConstants.osmUserAgent,
                 maxZoom: 19,
               ),
-              // サービス対象区域(下目黒4・5・6丁目)の境界を薄い緑で表示。
-              PolygonLayer(
-                polygons: [
-                  for (final area in kServiceAreaPolygons)
-                    Polygon(
-                      points: area.points,
-                      color: const Color(AppConstants.serviceAreaColorValue)
-                          .withValues(alpha: 0.08),
-                      borderColor:
-                          const Color(AppConstants.serviceAreaColorValue)
-                              .withValues(alpha: 0.7),
-                      borderStrokeWidth: 2,
-                    ),
-                ],
-              ),
+              // サービス対象区域(丁目ポリゴン)の境界を薄い緑で表示。
+              // 市区町村全体などポリゴンを持たない場合は描画しない。
+              if (_area.polygons.isNotEmpty)
+                PolygonLayer(
+                  polygons: [
+                    for (final area in _area.polygons)
+                      Polygon(
+                        points: area.points,
+                        color: const Color(AppConstants.serviceAreaColorValue)
+                            .withValues(alpha: 0.08),
+                        borderColor:
+                            const Color(AppConstants.serviceAreaColorValue)
+                                .withValues(alpha: 0.7),
+                        borderStrokeWidth: 2,
+                      ),
+                  ],
+                ),
             ],
           ),
           // 中央固定ピン(区域外はオレンジで注意喚起)
@@ -175,8 +187,10 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              _areaBanner(),
-              const SizedBox(height: 8),
+              if (_hasCheck) ...[
+                _areaBanner(),
+                const SizedBox(height: 8),
+              ],
               Text(formatLatLng(_center.latitude, _center.longitude),
                   style: const TextStyle(color: Colors.black54, fontSize: 12.5)),
               const SizedBox(height: 8),
@@ -218,8 +232,8 @@ class _LocationPickerScreenState extends State<LocationPickerScreen> {
           Expanded(
             child: Text(
               _inArea
-                  ? '対象区域内（${ServiceArea.areaLabel}）です。'
-                  : '対象区域（${ServiceArea.areaLabel}）の外です。'
+                  ? '対象区域内（$_communityName）です。'
+                  : '対象区域（$_communityName）の外です。'
                       'このまま決定もできますが、区域内をおすすめします。',
               style: TextStyle(
                 fontSize: 12.5,

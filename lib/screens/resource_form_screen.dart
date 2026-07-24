@@ -9,7 +9,6 @@ import '../models/resource.dart';
 import '../models/resource_category.dart';
 import '../providers/app_state.dart';
 import '../services/attachment_service.dart';
-import '../utils/service_area.dart';
 import '../widgets/attachment_view.dart';
 import 'location_picker_screen.dart';
 
@@ -133,15 +132,15 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
       );
       return;
     }
-    // 区域外は警告のみ(登録は許可)
-    if (!ServiceArea.contains(_location!)) {
+    final state = context.read<AppState>();
+    // 区域判定を持つコミュニティのみ区域外を警告(登録は許可)。
+    if (state.hasAreaCheck && !state.isInArea(_location!)) {
       final proceed = await _confirmOutOfArea();
       if (proceed != true) return;
       if (!mounted) return;
     }
 
     setState(() => _saving = true);
-    final state = context.read<AppState>();
     final now = DateTime.now();
     try {
       if (_isEdit) {
@@ -200,12 +199,13 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
   }
 
   Future<bool?> _confirmOutOfArea() {
+    final label = context.read<AppState>().community.name;
     return showDialog<bool>(
       context: context,
       builder: (ctx) => AlertDialog(
         title: const Text('対象区域の外です'),
         content: Text(
-          '選択した位置は${ServiceArea.areaLabel}の外です。'
+          '選択した位置は$labelの外です。'
           'このまま登録してもよろしいですか？',
         ),
         actions: [
@@ -398,7 +398,9 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
   }
 
   Widget _locationSection() {
-    final inArea = _location != null && ServiceArea.contains(_location!);
+    final state = context.read<AppState>();
+    final hasCheck = state.hasAreaCheck;
+    final inArea = _location != null && state.isInArea(_location!);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
@@ -414,36 +416,40 @@ class _ResourceFormScreenState extends State<ResourceFormScreen> {
           ),
         ),
         if (_location != null) ...[
-          const SizedBox(height: 8),
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: inArea
-                  ? const Color(0xFF2E7D32).withValues(alpha: 0.08)
-                  : const Color(0xFFFF6D00).withValues(alpha: 0.10),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: Row(
-              children: [
-                Icon(
-                  inArea ? Icons.check_circle_rounded : Icons.warning_amber_rounded,
-                  size: 18,
-                  color: inArea
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFFF6D00),
-                ),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
+          if (hasCheck) ...[
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: inArea
+                    ? const Color(0xFF2E7D32).withValues(alpha: 0.08)
+                    : const Color(0xFFFF6D00).withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Row(
+                children: [
+                  Icon(
                     inArea
-                        ? '${ServiceArea.areaNameOf(_location!) ?? ServiceArea.areaLabel}(対象区域内)'
-                        : '${ServiceArea.areaLabel}の外です',
-                    style: const TextStyle(fontSize: 12),
+                        ? Icons.check_circle_rounded
+                        : Icons.warning_amber_rounded,
+                    size: 18,
+                    color: inArea
+                        ? const Color(0xFF2E7D32)
+                        : const Color(0xFFFF6D00),
                   ),
-                ),
-              ],
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      inArea
+                          ? '${state.area.areaNameOf(_location!) ?? state.community.name}(対象区域内)'
+                          : '${state.community.name}の外です',
+                      style: const TextStyle(fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
+          ],
           const SizedBox(height: 4),
           Text(
             '緯度 ${_location!.latitude.toStringAsFixed(6)} / '

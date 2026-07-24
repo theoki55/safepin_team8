@@ -9,7 +9,6 @@ import '../services/location_service.dart';
 import '../utils/constants.dart';
 import '../models/resource_category.dart';
 import '../utils/location_blur.dart';
-import '../utils/service_area_data.dart';
 import '../widgets/pin_marker.dart';
 import '../widgets/resource_marker.dart';
 import 'filter_sheet.dart';
@@ -29,6 +28,9 @@ class _MapScreenState extends State<MapScreen> {
   final _mapController = MapController();
   final _locationService = LocationService();
   bool _locating = false;
+
+  /// 直近に地図へ反映したコミュニティID。切替検知に使う。
+  String? _lastCommunityId;
 
   Future<void> _goToCurrent() async {
     setState(() => _locating = true);
@@ -88,6 +90,18 @@ class _MapScreenState extends State<MapScreen> {
   Widget build(BuildContext context) {
     return Consumer<AppState>(
       builder: (context, state, _) {
+        // コミュニティが切り替わったら地図の中心/ズームを移動する。
+        // 初回(初期表示)は MapOptions.initialCenter が使われるため記録のみ。
+        if (_lastCommunityId == null) {
+          _lastCommunityId = state.communityId;
+        } else if (_lastCommunityId != state.communityId) {
+          _lastCommunityId = state.communityId;
+          final center = state.mapCenter;
+          final zoom = state.mapZoom;
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (mounted) _mapController.move(center, zoom);
+          });
+        }
         final pins = state.filteredPins;
         final resources = state.visibleResources;
         return Stack(
@@ -95,8 +109,8 @@ class _MapScreenState extends State<MapScreen> {
             FlutterMap(
               mapController: _mapController,
               options: MapOptions(
-                initialCenter: AppConstants.defaultCenter,
-                initialZoom: AppConstants.defaultZoom,
+                initialCenter: state.mapCenter,
+                initialZoom: state.mapZoom,
                 onLongPress: (tapPosition, point) => _onLongPress(point),
                 interactionOptions: const InteractionOptions(
                   flags: InteractiveFlag.all & ~InteractiveFlag.rotate,
@@ -108,21 +122,24 @@ class _MapScreenState extends State<MapScreen> {
                   userAgentPackageName: AppConstants.osmUserAgent,
                   maxZoom: 19,
                 ),
-                // サービス対象区域(下目黒4・5・6丁目)の境界を薄い緑で表示。
-                PolygonLayer(
-                  polygons: [
-                    for (final area in kServiceAreaPolygons)
-                      Polygon(
-                        points: area.points,
-                        color: const Color(AppConstants.serviceAreaColorValue)
-                            .withValues(alpha: 0.08),
-                        borderColor:
-                            const Color(AppConstants.serviceAreaColorValue)
-                                .withValues(alpha: 0.7),
-                        borderStrokeWidth: 2,
-                      ),
-                  ],
-                ),
+                // サービス対象区域(丁目ポリゴン)の境界を薄い緑で表示。
+                // 市区町村全体(municipality)など、ポリゴンを持たない
+                // コミュニティでは描画しない。
+                if (state.area.polygons.isNotEmpty)
+                  PolygonLayer(
+                    polygons: [
+                      for (final area in state.area.polygons)
+                        Polygon(
+                          points: area.points,
+                          color: const Color(AppConstants.serviceAreaColorValue)
+                              .withValues(alpha: 0.08),
+                          borderColor:
+                              const Color(AppConstants.serviceAreaColorValue)
+                                  .withValues(alpha: 0.7),
+                          borderStrokeWidth: 2,
+                        ),
+                    ],
+                  ),
                 // ぼかし円: NEED/OFFER は自宅等と結びつくため、
                 // 正確な位置ではなく「このあたり(約150m四方)」を示す円を描く。
                 CircleLayer(

@@ -386,6 +386,8 @@ class _ResourceBulkUploadScreenState extends State<ResourceBulkUploadScreen> {
         content,
         registeredByUid: state.currentUid,
         registeredByName: state.adminName2,
+        area: state.area,
+        communityId: state.communityId,
       );
 
       if (result.hasFatal) {

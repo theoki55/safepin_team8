@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 
 import '../models/resource.dart';
 import '../providers/app_state.dart';
-import '../utils/service_area.dart';
 import '../widgets/attachment_view.dart';
 import 'resource_form_screen.dart';
 
@@ -40,7 +39,10 @@ class ResourceDetailSheet extends StatelessWidget {
         }
         final r = matches.first;
         final df = DateFormat('yyyy/MM/dd');
-        final inArea = ServiceArea.contains(LatLng(r.lat, r.lng));
+        // 区域判定を持つコミュニティ(丁目等)でのみ内/外ラベルを付ける。
+        final areaLabel = state.hasAreaCheck
+            ? (state.isInArea(LatLng(r.lat, r.lng)) ? '（対象区域内）' : '（区域外）')
+            : '';
 
         return DraggableScrollableSheet(
           expand: false,
@@ -111,7 +113,7 @@ class ResourceDetailSheet extends StatelessWidget {
                   Icons.my_location_rounded,
                   '位置',
                   '${r.lat.toStringAsFixed(6)}, ${r.lng.toStringAsFixed(6)}'
-                      '${inArea ? '（対象区域内）' : '（区域外）'}',
+                      '$areaLabel',
                 ),
                 _infoRow(Icons.groups_rounded, '管理団体',
                     r.managedBy.isEmpty ? '（未設定）' : r.managedBy),

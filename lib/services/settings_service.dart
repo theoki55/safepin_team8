@@ -7,6 +7,18 @@ class SettingsService {
   static const _kMode = 'app_mode';
   static const _kAuthor = 'author_name';
   static const _kAdmin = 'is_admin';
+  static const _kCommunity = 'community_id';
+
+  /// 選択中のコミュニティID(未保存なら null)。
+  Future<String?> loadCommunityId() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_kCommunity);
+  }
+
+  Future<void> saveCommunityId(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_kCommunity, id);
+  }
 
   Future<AppMode> loadMode() async {
     final prefs = await SharedPreferences.getInstance();

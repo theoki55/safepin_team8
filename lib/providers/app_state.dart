@@ -1,15 +1,19 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:latlong2/latlong.dart';
 
+import '../models/community.dart';
 import '../models/enums.dart';
 import '../models/pin.dart';
 import '../models/resource.dart';
 import '../services/admin_service.dart';
 import '../services/auth_service.dart';
+import '../services/community_service.dart';
 import '../services/pin_repository.dart';
 import '../services/resource_repository.dart';
 import '../services/settings_service.dart';
+import '../utils/communities.dart';
 import '../utils/constants.dart';
 
 /// アプリ全体の状態管理。
@@ -23,13 +27,58 @@ class AppState extends ChangeNotifier {
   /// 地域資源(RESOURCE)のリポジトリ。未指定なら資源機能は無効(空)扱い。
   final ResourceRepository? resourceRepository;
 
+  /// コミュニティ(URL固定+設定切替)の解決/保存サービス。
+  final CommunityService communityService;
+
   AppState({
     required this.repository,
     required this.settings,
     required this.auth,
     this.resourceRepository,
     AdminService? admin,
-  }) : admin = admin ?? AdminService();
+    CommunityService? communityService,
+  })  : admin = admin ?? AdminService(),
+        communityService = communityService ?? CommunityService(settings);
+
+  // ---- コミュニティ(自治会/地域) ----
+
+  /// 現在選択中のコミュニティ。init() で解決される。
+  Community _community = communityById(kDefaultCommunityId);
+  Community get community => _community;
+  String get communityId => _community.id;
+
+  /// 地図初期中心(選択中コミュニティ)。
+  LatLng get mapCenter => _community.center;
+
+  /// 地図初期ズーム(選択中コミュニティ)。
+  double get mapZoom => _community.zoom;
+
+  /// 選択中コミュニティの対象区域。
+  Area get area => _community.area;
+
+  /// 区域の in/out 判定を持つか(polygon/circle のみ true)。
+  bool get hasAreaCheck => _community.area.hasBoundaryCheck;
+
+  /// 指定座標が対象区域内か(判定を持たないタイプは常に true)。
+  bool isInArea(LatLng point) => _community.area.contains(point);
+
+  /// 選択中コミュニティの区域説明テキスト。
+  String get areaNote => _community.note;
+
+  /// 選択中コミュニティを切り替える。
+  /// 地図中心/区域/登録先が変わり、管理者セッションはリセットする。
+  Future<void> switchCommunity(String id) async {
+    if (!isValidCommunityId(id) || id == _community.id) return;
+    _community = communityById(id);
+    await communityService.persist(id);
+    // 別地域の管理者権限を引き継がないよう、切替時にセッションを解除。
+    if (_isAdmin) {
+      await admin.logout();
+      _isAdmin = false;
+      _adminName = '';
+    }
+    notifyListeners();
+  }
 
   /// 端末ごとの匿名ID(未認証なら空文字)。
   String get currentUid => auth.uid ?? '';
@@ -118,8 +167,9 @@ class AppState extends ChangeNotifier {
   List<Resource> _resources = [];
   StreamSubscription<List<Resource>>? _resourcesSub;
 
-  /// 全資源(登録順・新しい順)。
-  List<Resource> get allResources => List.unmodifiable(_resources);
+  /// 全資源(選択中コミュニティのみ・登録順・新しい順)。
+  List<Resource> get allResources => List.unmodifiable(
+      _resources.where((r) => r.communityId == _community.id));
 
   /// 地図に資源レイヤーを表示するか(フィルタ)。既定は表示。
   bool _showResources = true;
@@ -136,22 +186,26 @@ class AppState extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 地図/一覧に出す資源(フィルタ適用後)。
+  /// 地図/一覧に出す資源(コミュニティ+表示フィルタ適用後)。
   List<Resource> get visibleResources =>
-      _showResources ? _resources : const [];
+      _showResources ? allResources : const [];
 
   /// 資源を1件登録する(管理者操作)。監査ログにも記録する。
   Future<void> addResource(Resource resource) async {
     final repo = resourceRepository;
     if (repo == null) return;
-    await repo.add(resource);
+    // 新規登録には現在のコミュニティIDを付与する。
+    final r = resource.communityId == _community.id
+        ? resource
+        : resource.copyWith(communityId: _community.id);
+    await repo.add(r);
     if (!_resourcesRealtime) {
-      _resources.insert(0, resource);
+      _resources.insert(0, r);
       notifyListeners();
     }
     await admin.logAction(
       'resource_add',
-      '${resource.category.label}「${resource.name}」を登録',
+      '${r.category.label}「${r.name}」を登録',
     );
   }
 
@@ -189,9 +243,15 @@ class AppState extends ChangeNotifier {
   Future<int> addResources(List<Resource> resources) async {
     final repo = resourceRepository;
     if (repo == null || resources.isEmpty) return 0;
-    final saved = await repo.addMany(resources);
+    // 一括登録も現在のコミュニティIDを付与する。
+    final tagged = resources
+        .map((r) => r.communityId == _community.id
+            ? r
+            : r.copyWith(communityId: _community.id))
+        .toList();
+    final saved = await repo.addMany(tagged);
     if (!_resourcesRealtime) {
-      _resources.insertAll(0, resources);
+      _resources.insertAll(0, tagged);
       notifyListeners();
     }
     await admin.logAction(
@@ -239,6 +299,8 @@ class AppState extends ChangeNotifier {
   Future<void> init() async {
     _loading = true;
     notifyListeners();
+    // 起動時にコミュニティを解決(URL ?c= → 保存値 → 既定)。
+    _community = await communityService.resolveInitial();
     await repository.init();
     _mode = await settings.loadMode();
     _authorName = await settings.loadAuthorName();
@@ -335,6 +397,8 @@ class AppState extends ChangeNotifier {
 
   List<Pin> get filteredPins {
     return _pins.where((p) {
+      // 選択中コミュニティのピンのみ表示(データ分離)。
+      if (p.communityId != _community.id) return false;
       // 通報で非表示になった投稿は一般利用者には見せない(管理者には薄く表示)。
       if (p.hiddenByReports && !_isAdmin) return false;
       // モード別絞り込み: 「全モード表示」でなければ現在のモードのピンのみ
@@ -347,8 +411,9 @@ class AppState extends ChangeNotifier {
   }
 
   /// 現在のモードで表示対象になるピン(種別フィルタ等は無視、モードのみ考慮)。
-  Iterable<Pin> get _pinsForCurrentMode =>
-      _showAllModes ? _pins : _pins.where((p) => p.mode == _mode);
+  /// コミュニティ絞り込みは常に適用する。
+  Iterable<Pin> get _pinsForCurrentMode => _pins.where((p) =>
+      p.communityId == _community.id && (_showAllModes || p.mode == _mode));
 
   int countByType(PinType type) =>
       _pinsForCurrentMode.where((p) => p.type == type).length;
@@ -367,9 +432,13 @@ class AppState extends ChangeNotifier {
   // リアルタイム同期時は snapshot が _pins を更新するため、
   // ローカルリストは直接操作しない。非リアルタイム時のみ手動で更新する。
   Future<void> addPin(Pin pin) async {
-    await repository.add(pin);
+    // 新規投稿には現在のコミュニティIDを付与する。
+    final withCommunity = pin.communityId == _community.id
+        ? pin
+        : pin.copyWith(communityId: _community.id);
+    await repository.add(withCommunity);
     if (!_realtime) {
-      _pins.insert(0, pin);
+      _pins.insert(0, withCommunity);
       notifyListeners();
     }
   }
@@ -515,8 +584,11 @@ class AppState extends ChangeNotifier {
     var added = 0;
     for (final pin in pins) {
       try {
-        await repository.add(pin);
-        if (!_realtime) _pins.insert(0, pin);
+        final p = pin.communityId == _community.id
+            ? pin
+            : pin.copyWith(communityId: _community.id);
+        await repository.add(p);
+        if (!_realtime) _pins.insert(0, p);
         added++;
       } catch (e) {
         if (kDebugMode) debugPrint('addPins error for ${pin.id}: $e');
