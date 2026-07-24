@@ -187,13 +187,9 @@ class _MapScreenState extends State<MapScreen> {
                   }).toList(),
                 ),
                 // OSM 帰属表示(利用規約)。
-                // 右下は現在地/「ピンを立てる」FABと重なるため、左下に配置する。
-                const RichAttributionWidget(
-                  alignment: AttributionAlignment.bottomLeft,
-                  attributions: [
-                    TextSourceAttribution('OpenStreetMap contributors'),
-                  ],
-                ),
+                // RichAttributionWidget は展開ポップオーバーが凡例やFABと
+                // 重なるため使わず、常時表示の軽量バッジ(自前)を右下に固定する。
+                // 描画は下の Positioned(_AttributionBadge) で行う。
               ],
             ),
             // 上部: モードバナー & 統計
@@ -206,7 +202,7 @@ class _MapScreenState extends State<MapScreen> {
             // 右下: 現在地 & 追加
             Positioned(
               right: 14,
-              bottom: 52,
+              bottom: 24,
               child: Column(
                 children: [
                   FloatingActionButton.small(
@@ -233,10 +229,9 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
             // 左下: 凡例 & フィルタ
-            // OSM帰属表示(左下角)と重ならないよう、少し上げて余白を確保。
             Positioned(
               left: 14,
-              bottom: 52,
+              bottom: 24,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
@@ -255,9 +250,38 @@ class _MapScreenState extends State<MapScreen> {
                 ],
               ),
             ),
+            // 最下部中央: OSM 帰属表示(常時表示の軽量バッジ)。
+            // 左下の凡例・右下のFABの間(下端中央)に置くため、どちらとも重ならない。
+            const Positioned(
+              left: 0,
+              right: 0,
+              bottom: 2,
+              child: Center(child: _AttributionBadge()),
+            ),
           ],
         );
       },
+    );
+  }
+}
+
+/// OSM 帰属表示バッジ(常時表示・非折りたたみ)。
+/// 展開ポップオーバーを持たないため、凡例やFABと重ならない。
+class _AttributionBadge extends StatelessWidget {
+  const _AttributionBadge();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      decoration: BoxDecoration(
+        color: Colors.white.withValues(alpha: 0.82),
+        borderRadius: BorderRadius.circular(6),
+      ),
+      child: const Text(
+        '© OpenStreetMap contributors',
+        style: TextStyle(fontSize: 10, color: Colors.black54),
+      ),
     );
   }
 }
