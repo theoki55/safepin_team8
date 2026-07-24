@@ -58,6 +58,47 @@
       }
     }
   </script>
+
+  <!--
+    iOS Safari 対策:
+    CanvasKit(WASM)を既定の gstatic CDN ではなく、同一オリジンの
+    /canvaskit/ から読み込む。iOS Safari では クロスサイトの WASM
+    読み込みがプライバシー設定/ネットワークで失敗し、白画面になる
+    ことがあるため、CDN 依存を排除する。
+
+    flutter_bootstrap.js は引数なしで _flutter.loader.load() を呼ぶため
+    config を渡せない。そこで _flutter.loader.load を事前にラップし、
+    canvasKitBaseUrl を強制注入してから本来の load() を実行する。
+    engineRevision は flutter_bootstrap.js が設定する buildConfig を
+    そのまま使うので、ビルド更新にも自動追従する。
+  -->
+  <script>
+    (function () {
+      window._flutter = window._flutter || {};
+      // loader が bootstrap によって定義される前にプロパティをフックする
+      var loaderStore;
+      Object.defineProperty(window._flutter, 'loader', {
+        configurable: true,
+        enumerable: true,
+        get: function () { return loaderStore; },
+        set: function (value) {
+          // 本来の load をラップし、config.canvasKitBaseUrl を強制する
+          if (value && typeof value.load === 'function') {
+            var originalLoad = value.load.bind(value);
+            value.load = function (options) {
+              options = options || {};
+              options.config = options.config || {};
+              if (!options.config.canvasKitBaseUrl) {
+                options.config.canvasKitBaseUrl = 'canvaskit/';
+              }
+              return originalLoad(options);
+            };
+          }
+          loaderStore = value;
+        }
+      });
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>
