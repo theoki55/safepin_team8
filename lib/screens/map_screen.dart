@@ -186,8 +186,10 @@ class _MapScreenState extends State<MapScreen> {
                     );
                   }).toList(),
                 ),
-                // OSM 帰属表示(利用規約)
+                // OSM 帰属表示(利用規約)。
+                // 右下は現在地/「ピンを立てる」FABと重なるため、左下に配置する。
                 const RichAttributionWidget(
+                  alignment: AttributionAlignment.bottomLeft,
                   attributions: [
                     TextSourceAttribution('OpenStreetMap contributors'),
                   ],
@@ -204,7 +206,7 @@ class _MapScreenState extends State<MapScreen> {
             // 右下: 現在地 & 追加
             Positioned(
               right: 14,
-              bottom: 24,
+              bottom: 52,
               child: Column(
                 children: [
                   FloatingActionButton.small(
@@ -231,9 +233,10 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
             // 左下: 凡例 & フィルタ
+            // OSM帰属表示(左下角)と重ならないよう、少し上げて余白を確保。
             Positioned(
               left: 14,
-              bottom: 24,
+              bottom: 52,
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
